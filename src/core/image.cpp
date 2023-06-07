@@ -3676,6 +3676,54 @@ void Image::GaussianHighPassFilter(float sigma) {
     }
 }
 
+void Image::ApplyRampFilter( ) {
+    float x;
+    float y;
+    float z;
+
+    float frequency_squared;
+    float current_frequency;
+    // Determined because each pixel is a square; Nyquist frequency = 0.5 cycle/sample, and because each pixel (which is the sample) has a max length of
+    // sqrt(2) because of the diagonal, the max frequency can only be half of that
+    float max_frequency = 0.5f * sqrt(2);
+    float current_filter;
+    bool  do_reverse_FFT = false;
+
+    long pixel_counter = 0;
+
+    if ( is_in_real_space ) {
+        this->ForwardFFT( );
+        do_reverse_FFT = true;
+    }
+    // Go through and calculate the total frequency, from all dimensions
+    for ( int k = 0; k <= physical_upper_bound_complex_z; k++ ) {
+        z = powf(ReturnFourierLogicalCoordGivenPhysicalCoord_Z(k) * fourier_voxel_size_z, 2);
+
+        for ( int j = 0; j <= physical_upper_bound_complex_y; j++ ) {
+            y = powf(ReturnFourierLogicalCoordGivenPhysicalCoord_Y(j) * fourier_voxel_size_y, 2);
+
+            for ( int i = 0; i <= physical_upper_bound_complex_x; i++ ) {
+                x = powf(ReturnFourierLogicalCoordGivenPhysicalCoord_X(i) * fourier_voxel_size_x, 2);
+
+                frequency_squared = x + y + z;
+                // Get the actual frequency, set the filter
+                current_frequency = sqrt(frequency_squared);
+                current_filter    = current_frequency / max_frequency;
+
+                // If the current filter is negative, just set the pixel to 0
+                if ( current_filter < 0.0f )
+                    current_filter = 0.0f;
+
+                // Apply filter
+                complex_values[pixel_counter] *= current_filter;
+                pixel_counter++;
+            }
+        }
+    }
+    if ( do_reverse_FFT )
+        this->BackwardFFT( );
+}
+
 void Image::RandomisePhases(float wanted_radius_in_reciprocal_pixels) {
     bool need_to_fft = false;
 

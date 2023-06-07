@@ -2732,6 +2732,7 @@ std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols, float min
                 }
             }
         }
+    }
 
         return std::make_pair(bestScore, bestIdx);
     };

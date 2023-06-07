@@ -275,6 +275,7 @@ class Image {
     Peak                StandardDeviationOfMass(float threshold = 0.0, bool apply_threshold = false, bool invert_densities = false);
     float               ReturnAverageOfMaxN(int number_of_pixels_to_average = 100, float mask_radius = 0.0);
     float               ReturnAverageOfMinN(int number_of_pixels_to_average = 100, float mask_radius = 0.0);
+    void                AverageRotationally( );
 
     void AddSlices(Image& sum_of_slices, int first_slice = 0, int last_slice = 0, bool calculate_average = false);
 
