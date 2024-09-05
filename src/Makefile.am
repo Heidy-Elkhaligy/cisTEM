@@ -279,6 +279,7 @@ bin_PROGRAMS =  cisTEM_job_control \
                 azimuthal_average_new \
                 shift_or_rotate_images \
                 extract_images \
+                align_class_average_to_reference \
                 cisTEM_display 
 
 
@@ -1081,6 +1082,12 @@ extract_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 extract_images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 extract_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 extract_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+align_class_average_to_reference_SOURCES  = programs/align_class_average_to_reference/align_class_average_to_reference.cpp
+align_class_average_to_reference_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+align_class_average_to_reference_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+align_class_average_to_reference_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+align_class_average_to_reference_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 multiply_two_stacks_SOURCES  = programs/multiply_two_stacks/multiply_two_stacks.cpp
 multiply_two_stacks_CXXFLAGS = $(WX_CPPFLAGS_BASE)
