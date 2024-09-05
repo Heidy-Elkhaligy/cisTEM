@@ -274,6 +274,11 @@ bin_PROGRAMS =  cisTEM_job_control \
                 refine_template \
                 make_template_result \
                 prepare_stack_matchtemplate \
+                sum_all_eer_files \
+                measure_template_bias \
+                azimuthal_average_new \
+                shift_or_rotate_images \
+                extract_images \
                 cisTEM_display 
 
 
@@ -1058,6 +1063,24 @@ azimuthal_average_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 azimuthal_average_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 azimuthal_average_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 azimuthal_average_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+azimuthal_average_new_SOURCES  = programs/azimuthal_average_new/azimuthal_average_new.cpp
+azimuthal_average_new_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+azimuthal_average_new_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+azimuthal_average_new_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+azimuthal_average_new_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+shift_or_rotate_images_SOURCES  = programs/shift_or_rotate_images/shift_or_rotate_images.cpp
+shift_or_rotate_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+shift_or_rotate_images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+shift_or_rotate_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+shift_or_rotate_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+extract_images_SOURCES  = programs/extract_images/extract_images.cpp
+extract_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+extract_images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+extract_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+extract_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 multiply_two_stacks_SOURCES  = programs/multiply_two_stacks/multiply_two_stacks.cpp
 multiply_two_stacks_CXXFLAGS = $(WX_CPPFLAGS_BASE)
