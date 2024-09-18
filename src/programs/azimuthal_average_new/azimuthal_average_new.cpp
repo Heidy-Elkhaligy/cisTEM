@@ -39,6 +39,7 @@ typedef struct ctf_parameters {
 std::vector<float> sum_image_columns(Image* current_image);
 float sum_image_columns_float(Image* current_image);
 std::pair<int, int>  find_column_sum_peaks(Image* current_image, float min_gap = 0.0);
+std::pair<int, int>  find_row_sum_peaks(Image* current_image, float min_gap = 0.0);
 std::vector<float> average_image_columns(Image* current_image);
 
 
@@ -92,6 +93,7 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
     int   bins_count              = 1; // The number of bins to use when clssifying images based on tube diameter, the min number is 1 class
     int   outer_mask_radius       = 0;
     bool  tubes_centered;
+    bool  low_pass;
 
     // RASTR mask parameters
     bool        RASTR = false;
@@ -123,7 +125,7 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
     float psi_max                 = 180.0;
     float psi_step                = 5.0;
     float fine_tuning_psi_step    = 0.25;
-    float padding_factor          = 2.0;
+    float padding_factor          = sqrtf(2); //(sqrt of 2)
 
     // bool set_expert_options;
     int  max_threads;
@@ -157,6 +159,7 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
     bins_count                      = my_input->GetIntFromUser("Number of classes for classifying the tube diameters", "The number of classes (bins) to classify the tubes based on specified min. and max. diameter", "1", 1);
     outer_mask_radius               = my_input->GetIntFromUser("Outer mask radius for tube search (pixels)", "Outer mask radius to use when searching for tubes in pixels", "0", 0);
     tubes_centered                  = my_input->GetYesNoFromUser("Are tubes centered?", "If yes, the outer radius of peak search from cross-correlation will be 1/5 x-dimension", "NO");
+    low_pass                        = my_input->GetYesNoFromUser("Apply low-pass gaussian filter", "If yes, will apply a gaussian low pass filter to the original images before aligining the azimuthal average projection", "NO");
 
     // output arguments for azimuthal average volume and class projections
     output_average_per_bin_filename          = my_input->GetFilenameFromUser("Output name for the average images per class stack","The output name for the average images generated per class MRC file", "output_average_per_class.mrc", false );
@@ -173,7 +176,7 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
         x_mask_center                = my_input->GetIntFromUser("X center of the mask (pixels)", "The X center of the provided mask or the created mask by the program, default is 0.75 * box size", "1", 1);
         y_mask_center                = my_input->GetIntFromUser("Y center pf the mask (pixels)", "The Y center of the provided mask or the created mask by the program, default is 0.5 * box size", "1", 1);
         z_mask_center                = my_input->GetIntFromUser("Z center of the mask (pixels)", "The Z center of the provided mask or the created mask by the program, default is 0.5 * box size", "1", 1);
-        sphere_mask_radius           = my_input->GetIntFromUser("Sphere mask radius (pixels)", "The radius of the provided mask or the created mask by the program, default is 0.1875 * box size", "1", 1);
+        sphere_mask_radius           = my_input->GetIntFromUser("Sphere mask radius (pixels)", "The radius of the provided mask or the created mask by the program, default is 0.3 * box size", "1", 1);
         number_of_models             = my_input->GetIntFromUser("Number of models to generate", "3D azimuthal average model is rotated in increments of (360/n) degrees", "4", 1);
         center_upweighted            = my_input->GetYesNoFromUser("Center the masked upweighted regions?", "Do you want to center the masked upweighted regions?", "No");
         cosine_edge                  = my_input->GetFloatFromUser("Width of cosine edge (A)", "Width of the smooth edge to add to the mask in Angstroms", "10.0", 0.0);
@@ -204,7 +207,7 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
         psi_max                          = my_input->GetFloatFromUser("Maximum rotation for initial search (degrees)", "The maximum angle rotation of initial search will be limited to this value.", "180.0", 180.0);
         psi_step                         = my_input->GetFloatFromUser("Rotation step size (degrees)", "The step size of each rotation will be limited to this value.", "5.0", 0.0);
         fine_tuning_psi_step             = my_input->GetFloatFromUser("Local refinement angle rotation step size (degrees)", "The local refinement search step size will be this value", "0.25", 0.0);
-        padding_factor                   = my_input->GetFloatFromUser("Padding factor", "Factor determining how much the average image is padded to improve subtraction", "2.0", 1.0);
+        padding_factor                   = my_input->GetFloatFromUser("Padding factor", "Factor determining how much the average image is padded to improve subtraction, defau;t is sqrt(2)", "1.4", 1.0);
     }
     
     //output_filename                 = my_input->GetFilenameFromUser("Output average subtracted stack filename", "The output average subtracted MRC file", "average_subtracted_output_filename.mrc", false);
@@ -220,8 +223,8 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
 
     delete my_input;
 
-    my_current_job.Reset(47);
-    my_current_job.ManualSetArguments("tffffbtffffbffiibttbbtiiiiibffffbttbttbfffffi", input_filename.ToUTF8( ).data( ),
+    my_current_job.Reset(48);
+    my_current_job.ManualSetArguments("tffffbtffffbffiibbttbbtiiiiibffffbttbttbfffffi", input_filename.ToUTF8( ).data( ),
                                         pixel_size,
                                         acceleration_voltage,
                                         spherical_aberration,
@@ -238,6 +241,7 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
                                         bins_count,
                                         outer_mask_radius,
                                         tubes_centered,
+                                        low_pass,
                                         output_average_per_bin_filename.ToUTF8( ).data( ),
                                         output_azimuthal_average_volume_filename.ToUTF8( ).data( ),
                                         RASTR,
@@ -289,34 +293,35 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     int         bins_count                               = my_current_job.arguments[14].ReturnIntegerArgument( );
     int         outer_mask_radius                        = my_current_job.arguments[15].ReturnIntegerArgument( );
     bool        tubes_centered                           = my_current_job.arguments[16].ReturnBoolArgument( );
-    wxString    output_average_per_bin_filename          = my_current_job.arguments[17].ReturnStringArgument( );
-    wxString    output_azimuthal_average_volume_filename = my_current_job.arguments[18].ReturnStringArgument( );    
-    bool        RASTR                                    = my_current_job.arguments[19].ReturnBoolArgument( );
-    bool        input_mask                               = my_current_job.arguments[20].ReturnBoolArgument( );
-    wxString    input_mask_filename                      = my_current_job.arguments[21].ReturnStringArgument( );
-    int         x_mask_center                            = my_current_job.arguments[22].ReturnIntegerArgument( );
-    int         y_mask_center                            = my_current_job.arguments[23].ReturnIntegerArgument( );
-    int         z_mask_center                            = my_current_job.arguments[24].ReturnIntegerArgument( );
-    int         sphere_mask_radius                       = my_current_job.arguments[25].ReturnIntegerArgument( );
-    int         number_of_models                         = my_current_job.arguments[26].ReturnIntegerArgument( );
-    bool        center_upweighted                        = my_current_job.arguments[27].ReturnBoolArgument( );
-    float       cosine_edge                              = my_current_job.arguments[28].ReturnFloatArgument( );
-    float       outside_weight                           = my_current_job.arguments[29].ReturnFloatArgument( );
-    float       filter_radius                            = my_current_job.arguments[30].ReturnFloatArgument( );
-    float       outside_value                            = my_current_job.arguments[31].ReturnFloatArgument( );
-    bool        use_outside_value                        = my_current_job.arguments[32].ReturnBoolArgument( );
-    wxString    RASTR_output_filename                    = my_current_job.arguments[33].ReturnStringArgument( );
-    wxString    RASTR_output_star_filename               = my_current_job.arguments[34].ReturnStringArgument( );   
-    bool        SPOT_RASTR                               = my_current_job.arguments[35].ReturnBoolArgument( );
-    wxString    SPOT_RASTR_output_filename               = my_current_job.arguments[36].ReturnStringArgument( );
-    wxString    SPOT_RASTR_output_star_filename          = my_current_job.arguments[37].ReturnStringArgument( );   
-    bool        set_expert_options                       = my_current_job.arguments[38].ReturnBoolArgument( );
-    float       psi_min                                  = my_current_job.arguments[39].ReturnFloatArgument( );
-    float       psi_max                                  = my_current_job.arguments[40].ReturnFloatArgument( );
-    float       psi_step                                 = my_current_job.arguments[41].ReturnFloatArgument( );
-    float       fine_tuning_psi_step                     = my_current_job.arguments[42].ReturnFloatArgument( );
-    float       padding_factor                           = my_current_job.arguments[43].ReturnFloatArgument( );
-    int         max_threads                              = my_current_job.arguments[44].ReturnIntegerArgument( );
+    bool        low_pass                                 = my_current_job.arguments[17].ReturnBoolArgument( );
+    wxString    output_average_per_bin_filename          = my_current_job.arguments[18].ReturnStringArgument( );
+    wxString    output_azimuthal_average_volume_filename = my_current_job.arguments[19].ReturnStringArgument( );    
+    bool        RASTR                                    = my_current_job.arguments[20].ReturnBoolArgument( );
+    bool        input_mask                               = my_current_job.arguments[21].ReturnBoolArgument( );
+    wxString    input_mask_filename                      = my_current_job.arguments[22].ReturnStringArgument( );
+    int         x_mask_center                            = my_current_job.arguments[23].ReturnIntegerArgument( );
+    int         y_mask_center                            = my_current_job.arguments[24].ReturnIntegerArgument( );
+    int         z_mask_center                            = my_current_job.arguments[25].ReturnIntegerArgument( );
+    int         sphere_mask_radius                       = my_current_job.arguments[26].ReturnIntegerArgument( );
+    int         number_of_models                         = my_current_job.arguments[27].ReturnIntegerArgument( );
+    bool        center_upweighted                        = my_current_job.arguments[28].ReturnBoolArgument( );
+    float       cosine_edge                              = my_current_job.arguments[29].ReturnFloatArgument( );
+    float       outside_weight                           = my_current_job.arguments[30].ReturnFloatArgument( );
+    float       filter_radius                            = my_current_job.arguments[31].ReturnFloatArgument( );
+    float       outside_value                            = my_current_job.arguments[32].ReturnFloatArgument( );
+    bool        use_outside_value                        = my_current_job.arguments[33].ReturnBoolArgument( );
+    wxString    RASTR_output_filename                    = my_current_job.arguments[34].ReturnStringArgument( );
+    wxString    RASTR_output_star_filename               = my_current_job.arguments[35].ReturnStringArgument( );   
+    bool        SPOT_RASTR                               = my_current_job.arguments[36].ReturnBoolArgument( );
+    wxString    SPOT_RASTR_output_filename               = my_current_job.arguments[37].ReturnStringArgument( );
+    wxString    SPOT_RASTR_output_star_filename          = my_current_job.arguments[38].ReturnStringArgument( );   
+    bool        set_expert_options                       = my_current_job.arguments[39].ReturnBoolArgument( );
+    float       psi_min                                  = my_current_job.arguments[40].ReturnFloatArgument( );
+    float       psi_max                                  = my_current_job.arguments[41].ReturnFloatArgument( );
+    float       psi_step                                 = my_current_job.arguments[42].ReturnFloatArgument( );
+    float       fine_tuning_psi_step                     = my_current_job.arguments[43].ReturnFloatArgument( );
+    float       padding_factor                           = my_current_job.arguments[44].ReturnFloatArgument( );
+    int         max_threads                              = my_current_job.arguments[45].ReturnIntegerArgument( );
 
     
     // initiate I/O variables
@@ -403,6 +408,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     float tube_rotation[number_of_input_images] = {0.0};
     float best_sum_column[number_of_input_images] = {0.0};
     float x_shift_column[number_of_input_images] = {0.0};
+    float y_shift_row[number_of_input_images] = {0.0};
     float all_diameters[number_of_input_images] = {0.0};
     //std::vector<float> all_diameters(number_of_input_images, 0.0f);
     int   diameter_bins[number_of_input_images];
@@ -445,7 +451,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
             z_mask_center = 0.5  * current_image.logical_x_dimension;
         }
         if (sphere_mask_radius == 1) {
-            sphere_mask_radius = 0.1875  * current_image.logical_x_dimension;
+            sphere_mask_radius = 0.3 * current_image.logical_x_dimension; //previously was 0.1875 
         }
     }
     
@@ -483,9 +489,8 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         }else if (tubes_centered == false && outer_mask_radius != 0) {
             current_image.CircleMask(outer_mask_radius); 
         } else if (tubes_centered == false && outer_mask_radius == 0) {
-            current_image.CircleMask(my_input_file.ReturnXSize( ));
-        }     
-        
+            current_image.CircleMask(my_input_file.ReturnXSize( ) * 0.9);
+        }             
         // FT the image
         current_image.ForwardFFT( );
         // convert the central pixel to zero (Is that done in real or Fouriier space??)
@@ -580,22 +585,25 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
         final_image.ReadSlice(&my_input_file, image_counter + 1);
         // if mask is needed to find the tubes then apply it here 
-        if (outer_mask_radius != 0) {
+        if ((tubes_centered == true) && (outer_mask_radius == 0 || outer_mask_radius != 0)) {
+            final_image.CircleMask(my_input_file.ReturnXSize( )/4);
+        }else if (tubes_centered == false && outer_mask_radius != 0) {
             final_image.CircleMask(outer_mask_radius); 
-        } else {
-            final_image.CircleMask(my_input_file.ReturnXSize( ));
-        }   
+        } else if (tubes_centered == false && outer_mask_radius == 0) {
+            final_image.CircleMask(my_input_file.ReturnXSize( ) * 0.9);
+        }     
+
         //final_final_image.Normalize( );
         final_image.Rotate2DInPlace(tube_rotation[image_counter], FLT_MAX); // if not 0.0 it will not crop the images into circle after rotation as no mask will be applied 
 
         //final_image.QuickAndDirtyWriteSlice("rotated_images_based_on_psi_from_column_sum_b4_shift_calculations_before_gaussian_filter.mrc", image_counter + 1);
 
         final_image.ForwardFFT( ); 
-        // to apply Gaussian filter you need to be in Fourier space???!!!!
-        // Nyquist value is the pixel size * 2
+        // to apply Gaussian filter you need to be in Fourier space
+        // Nyquist frequency value is the pixel size * 2
         // if we want to apply a gaussian pass filter that will make the image at 150 angestrom to be well smoothened and get better peaks
         final_image.GaussianLowPassFilter((pixel_size*2)/150); // use a sigma between 0-1 for best results as this will remove the high frequency information
-
+        
         final_image.BackwardFFT( );
         // calculate the required x shift to center the tubes
         //auto [peak_one_column_sum, peak_two_column_sum]  = find_column_sum_inner_diameter_peaks(&final_image, min_tube_diameter);
@@ -726,22 +734,28 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
 #pragma omp parallel for ordered schedule(dynamic) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file , inner_radius_for_peak_search, outer_radius_for_peak_search, tubes_centered, \
                                                                    best_correlation_score, best_psi_value, best_x_shift_value, best_y_shift_value, psi_step, tube_rotation, outer_mask_radius, \
-                                                                    max_threads, diameter_bins, sum_images, bins_count,tuned_rotation_range, tuned_step_size,  my_aln_progress, x_shift_column, all_diameters, bin_range, \
-                                                                    input_ctf_values_from_star_file, current_ctf, ctf_parameters_stack, min_tube_diameter, center_peak_index,pixel_size) \
+                                                                    max_threads, diameter_bins, sum_images, bins_count,tuned_rotation_range, tuned_step_size,  my_aln_progress, x_shift_column, y_shift_row, all_diameters, bin_range, \
+                                                                    input_ctf_values_from_star_file, current_ctf, ctf_parameters_stack, min_tube_diameter, center_peak_index, pixel_size, low_pass) \
                                                                    private(my_image, average_image, tuning_average_image, final_image, fine_tuning_average_image)
 
     for ( long aln_image_counter = 0; aln_image_counter < number_of_input_images; aln_image_counter++ ) {
         #pragma omp critical
         my_image.ReadSlice(&my_input_file, aln_image_counter + 1); 
         my_image.Normalize( );
- 
+        my_image.ForwardFFT( );
+        //testing adding a low pass filter on the original image before getting the correct shift from the correlation and how that can affect the centering of the mask at the end
+        if (low_pass) {
+            my_image.GaussianLowPassFilter((pixel_size*2)/150); 
+        }
+        my_image.BackwardFFT( );
         if ((tubes_centered == true) && (outer_mask_radius == 0 || outer_mask_radius != 0)) {
             my_image.CircleMask(my_input_file.ReturnXSize( )/4);
         }else if (tubes_centered == false && outer_mask_radius != 0) {
             my_image.CircleMask(outer_mask_radius); 
         } else if (tubes_centered == false && outer_mask_radius == 0) {
-            my_image.CircleMask(my_input_file.ReturnXSize( ));
+            my_image.CircleMask(my_input_file.ReturnXSize( ) * 0.9);
         }
+
         // initial angle search will start from the rotation angle we got from the auto-correlation
         // then change the auto-correlation angle to be within 180 
         // do another search within +/- 90 degrees of the auto-correlation psi angle
@@ -839,13 +853,13 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
             // calculate the cross correlation of the reference image with the rotated image
             tuning_average_image.CalculateCrossCorrelationImageWith(&my_image); //rotated_image
-
-            // if mask is needed to find the tubes then apply it here 
-            if (outer_mask_radius != 0) {
+            if ((tubes_centered == true) && (outer_mask_radius == 0 || outer_mask_radius != 0)) {
+                tuning_average_image.CircleMask(my_input_file.ReturnXSize( )/4);
+            }else if (tubes_centered == false && outer_mask_radius != 0) {
                 tuning_average_image.CircleMask(outer_mask_radius); 
-            } else {
-                tuning_average_image.CircleMask(my_input_file.ReturnXSize( ));
-            }   
+            } else if (tubes_centered == false && outer_mask_radius == 0) {
+                tuning_average_image.CircleMask(my_input_file.ReturnXSize( ) * 0.9);
+            }  
             // find the peak from the cross corrlation to get the values from the tuning_average_image
             current_tuned_peak = tuning_average_image.FindPeakWithParabolaFit(inner_radius_for_peak_search, outer_radius_for_peak_search);
             // debug scores
@@ -864,17 +878,23 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // Finding the tube shift and diameter to correctly shift tubes before adding them for the second time and to correctly classify the tubes based on final psi
         #pragma omp critical
         final_image.ReadSlice(&my_input_file, aln_image_counter + 1);
-        // if mask is needed to find the tubes then apply it here 
-        if (outer_mask_radius != 0) {
+        if ((tubes_centered == true) && (outer_mask_radius == 0 || outer_mask_radius != 0)) {
+            final_image.CircleMask(my_input_file.ReturnXSize( )/4);
+        }else if (tubes_centered == false && outer_mask_radius != 0) {
             final_image.CircleMask(outer_mask_radius); 
-        } else {
-            final_image.CircleMask(my_input_file.ReturnXSize( ));
-        }   
+        } else if (tubes_centered == false && outer_mask_radius == 0) {
+            final_image.CircleMask(my_input_file.ReturnXSize( ) * 0.9);
+        }  
         //final_final_image.Normalize( );
         final_image.Rotate2DInPlace(-best_psi_value[aln_image_counter], FLT_MAX); // if not 0.0 it will not crop the images into circle after rotation as no mask will be applied 
-        final_image.PhaseShift(best_x_shift_value[aln_image_counter], best_y_shift_value[aln_image_counter]);
+        
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // I commented the next line as I need to get the correct shift in x an d y dimensions with respect to the center/////
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //final_image.PhaseShift(best_x_shift_value[aln_image_counter], best_y_shift_value[aln_image_counter]);
+        
         final_image.ForwardFFT( ); 
-        // to apply Gaussian filter you need to be in Fourier space???!!!!
+        // to apply Gaussian filter you need to be in Fourier space
         // Nyquist value is the pixel size * 2
         // if we want to apply a gaussian pass filter that will make the image at 150 angestrom to be well smoothened and get better peaks
         final_image.GaussianLowPassFilter((pixel_size*2)/150); // use a sigma between 0-1 for best results as this will remove the high frequency information
@@ -885,9 +905,28 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // calculate the required x shift to center the tubes
         //auto [peak_one_column_sum, peak_two_column_sum]  = find_column_sum_inner_diameter_peaks(&final_image, min_tube_diameter);
         auto [peak_one_column_sum, peak_two_column_sum]  = find_column_sum_peaks(&final_image,min_tube_diameter);
+        // update the x_shift required to center the column (will be needed later????)
+        float tube_center_column_sum = std::abs(peak_one_column_sum - peak_two_column_sum)/2;
+        float distance_from_center_column_sum = -((peak_one_column_sum + peak_two_column_sum)/2 - center_peak_index); 
+
+        x_shift_column[aln_image_counter] = distance_from_center_column_sum; // the x-shift needed
+
         // find the diameter and save it
         float tube_diameter = std::abs((peak_one_column_sum - peak_two_column_sum)); // * pixel_size
         all_diameters[aln_image_counter] = tube_diameter;
+
+        final_image.Rotate2DInPlace(90.0, FLT_MAX);
+        // calculate the required y shift to center the tubes
+        // we will need to rotate the tube 90 degrees to be aligned with y-axis
+        //auto [peak_one_column_sum, peak_two_column_sum]  = find_column_sum_inner_diameter_peaks(&final_image, min_tube_diameter);
+        auto [peak_one_row_sum, peak_two_row_sum]  = find_row_sum_peaks(&final_image,min_tube_diameter);
+        // update the x_shift required to center the column (will be needed later????)
+        float tube_center_row_sum = std::abs(peak_one_row_sum - peak_two_row_sum)/2;
+        float distance_from_center_row_sum = -((peak_one_row_sum + peak_two_row_sum)/2 - center_peak_index); 
+
+        y_shift_row[aln_image_counter] = distance_from_center_row_sum; // the x-shift needed
+
+        //wxPrintf("The image number %li x shift is %f, y-shift is %f and best x shift is %f, best y shift is %f \n\n", aln_image_counter, x_shift_column[aln_image_counter], y_shift_row[aln_image_counter], -best_x_shift_value[aln_image_counter], -best_y_shift_value[aln_image_counter]);
 
         // save an index for the class assignment of each image based on its diameter
         int which_bin_index_int = (tube_diameter - min_tube_diameter) / bin_range; // it will always round down so 0.9999 > 0
@@ -942,6 +981,8 @@ bool AzimuthalAverageNew::DoCalculation( ) {
             //added_image.QuickAndDirtyWriteSlice("added_image_after_applyactf.mrc", image_counter +1);
 
             added_image_after_aln.Rotate2DInPlace(-best_psi_value[image_counter], FLT_MAX);
+            // update the x_shift column to get the shift that is needed to center the tube after rotation
+
             added_image_after_aln.PhaseShift(best_x_shift_value[image_counter], best_y_shift_value[image_counter], 0.0); // before was x_shift_column if you use it then uncomment that part in aln loop
             //added_image_after_aln.QuickAndDirtyWriteSlice("added_image_after_aln_after_rotation_and_shift.mrc", image_counter +1);
 
@@ -961,6 +1002,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     }
 
     delete update_sum_progress;
+
 
 
     for (int bin_index = 0; bin_index < bins_count; bin_index++){          
@@ -1022,6 +1064,24 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     }
     sum_images_copy->Deallocate( );
     delete azimuthal_average_model_progress;
+
+
+// //////////////////////////////// Delete later this is just testing something//////////////////////////
+// // creating a sum image after getting the best rotation from the alignment
+//     Image test_image; 
+//     for ( image_counter = 0 ; image_counter < number_of_input_images; image_counter++ ) { 
+//             //test_image.Allocate(my_input_file.ReturnXSize( ), my_input_file.ReturnYSize( ), true); //allocate in real space
+//             //test_image.CopyFrom(&sum_images[0]);
+//             test_image.ReadSlice(&my_input_file, image_counter + 1);
+//             test_image.ForwardFFT( );
+//             test_image.GaussianLowPassFilter((pixel_size*2)/150);
+//             test_image.BackwardFFT( );
+//             test_image.QuickAndDirtyWriteSlice("final_image_low_pass_filter.mrc", image_counter + 1);
+
+//             //test_image.Rotate2DInPlace(best_psi_value[image_counter]);
+//             //test_image.PhaseShift(x_shift_column[image_counter], y_shift_row[image_counter]);
+//             //test_image.QuickAndDirtyWriteSlice("test_projection_image_shift.mrc", image_counter + 1);
+//      }
 
     // rotationally averaged 3D reconstruction
     Image               model_volume[bins_count];
@@ -1490,11 +1550,33 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 // in project 3D the following line is added before apply ctf and apply ctf is done where absolute is false and apply beam tilt is true
                 padded_projection_image.complex_values[0] = projection_3d.complex_values[0];
                 padded_projection_image.ApplyCTF(current_ctf, false, true);
+                // padded_projection_image.SwapRealSpaceQuadrants( ); // added new
+                // padded_projection_image.BackwardFFT( ); // added new
+
+                // padded_projection_image.QuickAndDirtyWriteSlice("padded_projection_image_to_be_subtracted.mrc", current_counter + 1);
+
+                // save the adjusted shift as the extract slice function applied a rotation matrix to the model which shifted x, y shifts more
+                // so saving those extra shifts is needed to center the images later and to save the correct shift in the output star file
+                RotationMatrix temp_matrix;
+                float rotated_x, rotated_y, rotated_z;
+                // // generate the full rotation matrix
+                temp_matrix.SetToEulerRotation(-(90.0 + best_psi_value[subtraction_image_counter]), -90.0, -phi);
+
+                temp_matrix.RotateCoords((x_mask_center - current_image.physical_address_of_box_center_x) , (y_mask_center - current_image.physical_address_of_box_center_y)  , (z_mask_center  - current_image.physical_address_of_box_center_x) , rotated_x, rotated_y, rotated_z);
+
+                // center the masked upweighted regions to the center
+                RASTR_adjusted_x_shifts[current_counter] = best_x_shift_value[subtraction_image_counter] - rotated_x;
+                RASTR_adjusted_y_shifts[current_counter] = best_y_shift_value[subtraction_image_counter] - rotated_y; 
+                
+                //recentering the mask
+                //padded_projection_image.PhaseShift(-RASTR_adjusted_x_shifts[current_counter]  , -RASTR_adjusted_y_shifts[current_counter]);
+
                 padded_projection_image.PhaseShift(-best_x_shift_value[subtraction_image_counter], -best_y_shift_value[subtraction_image_counter]);
                 padded_projection_image.SwapRealSpaceQuadrants( );
                 padded_projection_image.BackwardFFT( );
                 // de-pad projection
                 padded_projection_image.ClipInto(&projection_image);
+                //void Image::ClipInto(Image* other_image, float wanted_padding_value, bool fill_with_noise, float wanted_noise_sigma, int wanted_coordinate_of_box_center_x, int wanted_coordinate_of_box_center_y, int wanted_coordinate_of_box_center_z) 
                 //projection_image.QuickAndDirtyWriteSlice("frames_to_be_subtracted_from3Dvolume.mrc", subtraction_image_counter + 1); 
 
                 float edge_average = ReturnAverageOfRealValuesOnVerticalEdges(&projection_image);
@@ -1521,6 +1603,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
                 // multiply by the scaling factor calculated
                 projection_image.MultiplyByConstant((scale_factor));
+                #pragma omp critical
                 projection_image.QuickAndDirtyWriteSlice("RASTR_projection_image_to_be_subtracted.mrc", current_counter + 1);
 
 
@@ -1536,18 +1619,6 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 padded_projection_image.Deallocate( );
                 projection_image.Deallocate( );
 
-                // save the adjusted shift as the extract slice function applied a rotation matrix to the model which shifted x, y shifts more
-                // so saving those extra shifts is needed to center the images later and to save the correct shift in the output star file
-                RotationMatrix temp_matrix;
-                float rotated_x, rotated_y, rotated_z;
-                // // generate the full rotation matrix
-                temp_matrix.SetToEulerRotation(-(90.0 + best_psi_value[subtraction_image_counter]), -90.0, -phi);
-
-                temp_matrix.RotateCoords((x_mask_center - current_image.physical_address_of_box_center_x) , (y_mask_center - current_image.physical_address_of_box_center_y)  , (z_mask_center  - current_image.physical_address_of_box_center_x) , rotated_x, rotated_y, rotated_z);
-
-                // center the masked upweighted regions to the center
-                RASTR_adjusted_x_shifts[current_counter] = best_x_shift_value[subtraction_image_counter] - rotated_x;
-                RASTR_adjusted_y_shifts[current_counter] = best_y_shift_value[subtraction_image_counter] - rotated_y; 
 
                 // float average = subtracted_RASTR_image.ReturnAverageOfRealValues( );
                 // mask_parameters.Init(phi, 90.0, 90.0 + best_psi_value[subtraction_image_counter], 0.0 , 0.0 ); //* pixel_size
@@ -1582,8 +1653,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
                 // if the user specified that the upweighted regions should be centered before saving them
                 if (center_upweighted == true) {
-                    
-                    subtracted_RASTR_image.PhaseShift(RASTR_adjusted_x_shifts[current_counter]  , RASTR_adjusted_y_shifts[current_counter]); 
+                    subtracted_RASTR_image.QuickAndDirtyWriteSlice("upweighted_regions_before_centering.mrc", current_counter + 1);
+                    // subtracted_RASTR_image.PhaseShift(RASTR_adjusted_x_shifts[current_counter]  , RASTR_adjusted_y_shifts[current_counter]); 
+                    // subtracted_RASTR_image.WriteSlice(&my_output_RASTR_filename, current_counter + 1); // no clipping to make sure that the image is recentered correctly before clipping!!!
                     centered_upweighted_image.Allocate(sphere_mask_radius * 2, sphere_mask_radius * 2, true);
                     subtracted_RASTR_image.ClipInto(&centered_upweighted_image);
 
@@ -1785,6 +1857,132 @@ std::pair<int, int> find_column_sum_peaks(Image* current_image, float min_gap) {
             if (std::abs(peaks[index + 1] - highest_negative_peak) >= min_gap) {
                 second_highest_negative_peak = peaks[index + 1];
                 if (column_sum[second_highest_negative_peak] >= 0.8 * column_sum[highest_negative_peak]) { // if the second highest peak is at least 80% tall from the highest
+                    found_both_negative_peaks = true;
+                } else { // if the absolute differences is < than the gap
+                    current_main_peak++; // add one to the current_main_peak index and consider this the first highest peak
+                    highest_negative_peak = peaks[current_main_peak];
+                    index = 0;  // Reset index
+                }
+            }
+
+        }
+
+        float center_peak_index = current_image->logical_y_dimension / 2;
+        if (found_both_positive_peaks && ! found_both_negative_peaks) {
+            // save the peak with the minimum index to peak1 
+            int peak1 = std::min(highest_positive_peak, second_highest_positive_peak);
+            // save the peak with the highest index to peak2
+            int peak2 = std::max(highest_positive_peak, second_highest_positive_peak);
+            // float tube_center = std::abs(peak1 - peak2)/2;
+            // float distance_from_center = (peak1 + peak2)/2 - center_peak_index; 
+            // return -distance_from_center;
+            return std::make_pair(peak1, peak2);
+        }
+        if (!found_both_positive_peaks && found_both_negative_peaks) {
+            // save the peak with the minimum index to peak1 
+            int peak1 = std::min(highest_negative_peak, second_highest_negative_peak);
+            // save the peak with the highest index to peak2
+            int peak2 = std::max(highest_negative_peak, second_highest_negative_peak);
+            // float tube_center = std::abs(peak1 - peak2)/2;
+            // float distance_from_center = (peak1 + peak2)/2 - center_peak_index; 
+            // return -distance_from_center;
+            return std::make_pair(peak1, peak2);
+        }
+        if (found_both_positive_peaks && found_both_negative_peaks) {
+            // check if the min gap in the highest positive peak is closer to the specified min gap by the user than the negative peak
+            int min_positive_gap = std::abs(highest_positive_peak - second_highest_positive_peak);
+            int min_negative_gap = std::abs(highest_negative_peak - second_highest_negative_peak);
+            if (std::abs(min_positive_gap - min_gap) <= std::abs(min_negative_gap - min_gap)) {
+                    // then use the positive peak information
+                    // save the peak with the minimum index to peak1 
+                    int peak1 = std::min(highest_positive_peak, second_highest_positive_peak);
+                    // save the peak with the highest index to peak2
+                    int peak2 = std::max(highest_positive_peak, second_highest_positive_peak);
+                    // float tube_center = std::abs(peak1 - peak2)/2;
+                    // float distance_from_center = (peak1 + peak2)/2 - center_peak_index; 
+                    // return -distance_from_center;
+                    return std::make_pair(peak1, peak2);
+            } else {
+                    // save the peak with the minimum index to peak1 
+                    int peak1 = std::min(highest_negative_peak, second_highest_negative_peak);
+                    // save the peak with the highest index to peak2
+                    int peak2 = std::max(highest_negative_peak, second_highest_negative_peak);
+                    //float tube_center = std::abs(peak1 - peak2)/2;
+                    //float distance_from_center = (peak1 + peak2)/2 - center_peak_index; 
+                    //return -distance_from_center;
+                    return std::make_pair(peak1, peak2);
+            }
+
+        }
+
+    }
+
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+std::pair<int, int> find_row_sum_peaks(Image* current_image, float min_gap) { // it takes the rotated image and calculate the row sum 
+    std::vector<float> row_sum(current_image->logical_x_dimension, 0.0);
+
+    long pixel_counter = 0;
+
+     for ( int i = 0; i < current_image->logical_y_dimension; i++ ) {
+            for ( int j = 0; j < current_image->logical_x_dimension; j++ ) {
+                long pixel_coord_xy = current_image->ReturnReal1DAddressFromPhysicalCoord(j, i, 0);
+                row_sum[i] += current_image->real_values[pixel_coord_xy];
+                pixel_counter++;
+            }
+            pixel_counter += current_image->padding_jump_value;
+    }
+    // find the highest two peaks in the row sum that are having a min gap = min_gap
+    std::vector<int> peaks;
+    for (long i = 0; i < row_sum.size(); ++i) {
+        // if the value in the 1D array at index i is higher than the surrounding two values then it is a peak
+        // and should be added to the vector peaks!????
+        // note here I am saving the positions i.e indices
+        if (row_sum[i] > row_sum[i - 1] && row_sum[i] > row_sum[i + 1]) {
+            peaks.push_back(i);
+        }
+    }
+
+    // Sort peaks based on their values so we get the highest values at the begining
+    std::sort(peaks.begin(), peaks.end(),
+              [&row_sum](int i, int j) { return row_sum[i] > row_sum[j]; });
+    
+    // Initialize variables needed to loop over the peaks 
+    int current_main_peak = 0;
+    int highest_positive_peak = peaks[current_main_peak];
+    int second_highest_positive_peak = -1;
+    bool found_both_positive_peaks = false;
+    int highest_negative_peak = peaks[current_main_peak];
+    int second_highest_negative_peak = -1;
+    bool found_both_negative_peaks  = false;
+
+
+    // Loop to find the highest two positive peaks with a minimum gap
+    
+    for (long index = 0; index < peaks.size() && !found_both_positive_peaks; index++) {
+        // if the absolute difference between the highest peak position and the next one (indices) is higher than or equal to the gap
+        // then we have found both peaks
+        // check if the value of the peak is positive
+        // go over the positive peaks search
+        if (peaks[index] > 0) {
+            if (std::abs(peaks[index + 1] - highest_positive_peak) >= min_gap) { // removed the std::abs from this line 
+                second_highest_positive_peak = peaks[index + 1];
+                if (row_sum[second_highest_positive_peak] >= 0.8 * row_sum[highest_positive_peak]) {
+                    found_both_positive_peaks = true;
+                } else { // if the absolute differences is < than the gap
+                    current_main_peak++; // add one to the current_main_peak index and consider this the first highest peak
+                    highest_positive_peak = peaks[current_main_peak];
+                    index = 0;  // Reset index
+                }
+            }
+        } else if ( peaks[index] < 0) {
+            current_main_peak = 0;
+            std::vector<int> reversed_peaks = peaks;
+            std::reverse(reversed_peaks.begin(), reversed_peaks.end());
+            if (std::abs(peaks[index + 1] - highest_negative_peak) >= min_gap) {
+                second_highest_negative_peak = peaks[index + 1];
+                if (row_sum[second_highest_negative_peak] >= 0.8 * row_sum[highest_negative_peak]) { // if the second highest peak is at least 80% tall from the highest
                     found_both_negative_peaks = true;
                 } else { // if the absolute differences is < than the gap
                     current_main_peak++; // add one to the current_main_peak index and consider this the first highest peak
