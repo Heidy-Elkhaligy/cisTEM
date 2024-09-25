@@ -159,7 +159,7 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
     bins_count                      = my_input->GetIntFromUser("Number of classes for classifying the tube diameters", "The number of classes (bins) to classify the tubes based on specified min. and max. diameter", "1", 1);
     outer_mask_radius               = my_input->GetIntFromUser("Outer mask radius for tube search (pixels)", "Outer mask radius to use when searching for tubes in pixels", "0", 0);
     tubes_centered                  = my_input->GetYesNoFromUser("Are tubes centered?", "If yes, the outer radius of peak search from cross-correlation will be 1/5 x-dimension", "NO");
-    low_pass                        = my_input->GetYesNoFromUser("Apply low-pass gaussian filter", "If yes, will apply a gaussian low pass filter to the original images before aligining the azimuthal average projection", "NO");
+    low_pass                        = my_input->GetYesNoFromUser("Apply low-pass gaussian filter when aligning?", "If yes, will apply a gaussian low pass filter to the original images before aligining the azimuthal average projection", "NO");
 
     // output arguments for azimuthal average volume and class projections
     output_average_per_bin_filename          = my_input->GetFilenameFromUser("Output name for the average images per class stack","The output name for the average images generated per class MRC file", "output_average_per_class.mrc", false );
@@ -1550,27 +1550,6 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 // in project 3D the following line is added before apply ctf and apply ctf is done where absolute is false and apply beam tilt is true
                 padded_projection_image.complex_values[0] = projection_3d.complex_values[0];
                 padded_projection_image.ApplyCTF(current_ctf, false, true);
-                // padded_projection_image.SwapRealSpaceQuadrants( ); // added new
-                // padded_projection_image.BackwardFFT( ); // added new
-
-                // padded_projection_image.QuickAndDirtyWriteSlice("padded_projection_image_to_be_subtracted.mrc", current_counter + 1);
-
-                // save the adjusted shift as the extract slice function applied a rotation matrix to the model which shifted x, y shifts more
-                // so saving those extra shifts is needed to center the images later and to save the correct shift in the output star file
-                RotationMatrix temp_matrix;
-                float rotated_x, rotated_y, rotated_z;
-                // // generate the full rotation matrix
-                temp_matrix.SetToEulerRotation(-(90.0 + best_psi_value[subtraction_image_counter]), -90.0, -phi);
-
-                temp_matrix.RotateCoords((x_mask_center - current_image.physical_address_of_box_center_x) , (y_mask_center - current_image.physical_address_of_box_center_y)  , (z_mask_center  - current_image.physical_address_of_box_center_x) , rotated_x, rotated_y, rotated_z);
-
-                // center the masked upweighted regions to the center
-                RASTR_adjusted_x_shifts[current_counter] = best_x_shift_value[subtraction_image_counter] - rotated_x;
-                RASTR_adjusted_y_shifts[current_counter] = best_y_shift_value[subtraction_image_counter] - rotated_y; 
-                
-                //recentering the mask
-                //padded_projection_image.PhaseShift(-RASTR_adjusted_x_shifts[current_counter]  , -RASTR_adjusted_y_shifts[current_counter]);
-
                 padded_projection_image.PhaseShift(-best_x_shift_value[subtraction_image_counter], -best_y_shift_value[subtraction_image_counter]);
                 padded_projection_image.SwapRealSpaceQuadrants( );
                 padded_projection_image.BackwardFFT( );
@@ -1618,7 +1597,18 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 // Deallocate the projection image and padded projection image
                 padded_projection_image.Deallocate( );
                 projection_image.Deallocate( );
+                // save the adjusted shift as the extract slice function applied a rotation matrix to the model which shifted x, y shifts more
+                // so saving those extra shifts is needed to center the images later and to save the correct shift in the output star file
+                RotationMatrix temp_matrix;
+                float rotated_x, rotated_y, rotated_z;
+                // // generate the full rotation matrix
+                temp_matrix.SetToEulerRotation(-(90.0 + best_psi_value[subtraction_image_counter]), -90.0, -phi);
 
+                temp_matrix.RotateCoords((x_mask_center - current_image.physical_address_of_box_center_x) , (y_mask_center - current_image.physical_address_of_box_center_y)  , (z_mask_center  - current_image.physical_address_of_box_center_x) , rotated_x, rotated_y, rotated_z);
+
+                // center the masked upweighted regions to the center
+                RASTR_adjusted_x_shifts[current_counter] = best_x_shift_value[subtraction_image_counter] - rotated_x;
+                RASTR_adjusted_y_shifts[current_counter] = best_y_shift_value[subtraction_image_counter] - rotated_y; 
 
                 // float average = subtracted_RASTR_image.ReturnAverageOfRealValues( );
                 // mask_parameters.Init(phi, 90.0, 90.0 + best_psi_value[subtraction_image_counter], 0.0 , 0.0 ); //* pixel_size
@@ -1654,7 +1644,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 // if the user specified that the upweighted regions should be centered before saving them
                 if (center_upweighted == true) {
                     subtracted_RASTR_image.QuickAndDirtyWriteSlice("upweighted_regions_before_centering.mrc", current_counter + 1);
-                    // subtracted_RASTR_image.PhaseShift(RASTR_adjusted_x_shifts[current_counter]  , RASTR_adjusted_y_shifts[current_counter]); 
+                    subtracted_RASTR_image.PhaseShift(RASTR_adjusted_x_shifts[current_counter]  , RASTR_adjusted_y_shifts[current_counter]); 
                     // subtracted_RASTR_image.WriteSlice(&my_output_RASTR_filename, current_counter + 1); // no clipping to make sure that the image is recentered correctly before clipping!!!
                     centered_upweighted_image.Allocate(sphere_mask_radius * 2, sphere_mask_radius * 2, true);
                     subtracted_RASTR_image.ClipInto(&centered_upweighted_image);
@@ -1809,7 +1799,8 @@ std::pair<int, int> find_column_sum_peaks(Image* current_image, float min_gap) {
     }
     // find the highest two peaks in the row sum that are having a min gap = min_gap
     std::vector<int> peaks;
-    for (long i = 0; i < column_sum.size(); ++i) {
+    // I changed this to be i starting from 1 and ends at vector size -1 to avoid checking out of bound ranges
+    for (long i = 1; i < column_sum.size() - 1; ++i) {
         // if the value in the 1D array at index i is higher than the surrounding two values then it is a peak
         // and should be added to the vector peaks!????
         // note here I am saving the positions i.e indices
@@ -1833,12 +1824,13 @@ std::pair<int, int> find_column_sum_peaks(Image* current_image, float min_gap) {
 
 
     // Loop to find the highest two positive peaks with a minimum gap
-    
-    for (long index = 0; index < peaks.size() && !found_both_positive_peaks; index++) {
+    // I added size -1 to avoid accessing an out of bound index
+    for (long index = 0; index < peaks.size()&& !found_both_positive_peaks; index++) {
         // if the absolute difference between the highest peak position and the next one (indices) is higher than or equal to the gap
         // then we have found both peaks
         // check if the value of the peak is positive
         // go over the positive peaks search
+        //wxPrintf("%li\n", index);
         if (peaks[index] > 0) {
             if (std::abs(peaks[index + 1] - highest_positive_peak) >= min_gap) { // removed the std::abs from this line 
                 second_highest_positive_peak = peaks[index + 1];
@@ -2451,3 +2443,250 @@ void create_white_sphere_mask(Image* mask_file, int x_sphere_center, int y_spher
     }
     //mask_file->QuickAndDirtyWriteSlices("make_white_sphere_mask_inside_function.mrc", 1, mask_file->logical_z_dimension);
 }
+
+
+// //// What about calling it find_column_peaks and return the peaks to make it easier to calculate both the diameter and the shift without adding extra functions?
+// /////// Find Y shift needed to center the tubes after rotation
+// std::pair<int, int> find_column_peaks(Image* current_image, float min_gap, float pixel_size) { // it takes the rotated image and calculate the row sum 
+
+//     float center_peak_index = current_image.logical_y_dimension / 2;
+//     std::vector<float> column_sum_orig(current_image->logical_x_dimension, 0.0);
+//     std::vector<float> column_sum_gaussian(current_image->logical_x_dimension, 0.0);
+
+//     // create a copy of the image where we apply a gaussian filter to be easier to find the peaks in the image
+//     Image gaussain_image;
+//     gaussain_image.CopyFrom(&current_image);
+
+//     gaussain_image.ForwardFFT( );
+//     gaussian_image.GaussianLowPassFilter((pixel_size*2)/150);
+//     gaussain_image.BackwardFFT( );
+
+//     // get the column sum of the original image values
+//     long pixel_counter = 0;
+
+//      for ( int i = 0; i < current_image->logical_x_dimension; i++ ) {
+//             for ( int j = 0; j < current_image->logical_y_dimension; j++ ) {
+//                 long pixel_coord_xy = current_image->ReturnReal1DAddressFromPhysicalCoord(i, j, 0);
+//                 column_sum_orig[i] += current_image->real_values[pixel_coord_xy];
+//                 pixel_counter++;
+//             }
+//             pixel_counter += current_image->padding_jump_value;
+//     }
+
+//     // get the column sum of the gaussian image values
+//     pixel_counter = 0;
+
+//      for ( int i = 0; i < current_image->logical_x_dimension; i++ ) {
+//             for ( int j = 0; j < current_image->logical_y_dimension; j++ ) {
+//                 long pixel_coord_xy = current_image->ReturnReal1DAddressFromPhysicalCoord(i, j, 0);
+//                 column_sum_gaussian[i] += current_image->real_values[pixel_coord_xy];
+//                 pixel_counter++;
+//             }
+//             pixel_counter += current_image->padding_jump_value;
+//     }
+
+//     // first we need to normalize the values in the vector by subtracting the min value from each element
+//     float min_value_orig = std::min_element(column_sum_orig.begin(), column_sum_orig.end());
+//     std::vector<float> column_sum_orig_norm_min= column_sum_orig;
+
+//     for (float& elem : column_sum_orig_norm_min) {
+//         elem -= min_value_orig;
+//     }
+//     // Second we need to normalize the values in the vector by subtracting the max value from each element
+
+//     float max_value_orig = std::max_element(column_sum_orig.begin(), column_sum_orig.end());
+//     std::vector<float> column_sum_orig_norm_max= column_sum_orig;
+
+//     for (float& elem : column_sum_orig_norm_max) {
+//         elem = max_value_orig - elem;
+//     }
+
+//     // find the positive peaks 
+//     std::vector<int> orig_positive_peaks;
+//     // I changed this to be i starting from 1 and ends at vector size -1 to avoid checking out of bound ranges
+//     // and as also we don't care about the peaks on the edges
+//     for (long i = 1; i < column_sum_orig_norm_min.size() - 1; ++i) {
+//         // if the value in the 1D array at index i is higher than the surrounding two values then it is a peak
+//         // and should be added to the vector peaks!????
+//         // note here I am saving the positions i.e indices
+//         if (column_sum_orig_norm_min[i] > column_sum_orig_norm_min[i - 1] && column_sum_orig_norm_min[i] > column_sum_orig_norm_min[i + 1]) {
+//             orig_positive_peaks.push_back(i);
+//         }
+//     }
+
+//     //find the negative peaks that are found in te inverted vector (vec that was normalized by subtracting the maximum value)
+//     std::vector<int> orig_negative_peaks;
+//     // I changed this to be i starting from 1 and ends at vector size -1 to avoid checking out of bound ranges
+//     // and as also we don't care about the peaks on the edges
+//     for (long i = 1; i < column_sum_orig_norm_max.size() - 1; ++i) {
+//         // if the value in the 1D array at index i is higher than the surrounding two values then it is a peak
+//         // and should be added to the vector peaks!????
+//         // note here I am saving the positions i.e indices
+//         if (column_sum_orig_norm_max[i] > column_sum_orig_norm_max[i - 1] && column_sum_orig_norm_max[i] > column_sum_orig_norm_max[i + 1]) {
+//             orig_negative_peaks.push_back(i);
+//         }
+//     }
+
+//     // Sort peaks based on their values so we get the highest values at the begining
+//     std::sort(orig_positive_peaks.begin(), orig_positive_peaks.end(),
+//               [&column_sum_orig_norm_min](int i, int j) { return column_sum_orig_norm_min[i] > column_sum_orig_norm_min[j]; });
+//     // Sort peaks based on their values so we get the highest values at the begining
+//     std::sort(orig_negative_peaks.begin(), orig_negative_peaks.end(),
+//               [&column_sum_orig_norm_max](int i, int j) { return column_sum_orig_norm_max[i] > column_sum_orig_norm_max[j]; });
+    
+//     // now we have the indices of the peaks sorted based on their value in the normalized vectors in a descending orider where 
+//     // the peaks that has the largest value in the sum column are listed first then the one with less values are listed later
+
+//     // as we don't know the size of the diff list we can initiate it without a size
+//     std::vector<std::pair<float, int>> diff_list; 
+//     std::vector<int> valid_negative_peaks;
+
+//     for (int pos_peak : orig_positive_peaks) {
+//         if (pos_peak > center_peak_index){
+//             for (int neg_peak : orig_negative_peaks) {
+//                 if (neg_peak > pos_peak) {
+//                     valid_negative_peaks.push_back(neg_peak);
+//                 }
+//             }
+
+//         }
+//         else {
+//             for (int neg_peak : orig_negative_peaks) {
+//                 if (neg_peak < pos_peak) {
+//                     valid_negative_peaks.push_back(neg_peak);
+//                 }
+//             }
+//         }
+
+//         int closest_neg_peak;
+//         if(!valid_neg_peaks.empty()) {
+//         //// DO SOMETHING
+//             closest_neg_peak = std::min_element(valid_negative_peaks.begin(), valid_negative_peaks.end(), [pos_peak](int a, int b) {return std::abs(a - pos_peak) < std::abs(b - pos_peak)});
+//         }
+
+//         float diff = std::abs(column_sum_orig_norm_min[pos_peak] - column_sum_orig_norm_min[closest_neg_peak]);
+//         diff_list.push_back({diff, closest_neg_peak});
+//     }
+
+    
+
+
+
+
+
+
+
+
+
+
+//     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//     // find the highest two peaks in the row sum that are having a min gap = min_gap
+//     std::vector<int> gaussian_peaks;
+//     // I changed this to be i starting from 1 and ends at vector size -1 to avoid checking out of bound ranges
+//     for (long i = 1; i < column_sum_gaussian.size() - 1; ++i) {
+//         // if the value in the 1D array at index i is higher than the surrounding two values then it is a peak
+//         // and should be added to the vector peaks!????
+//         // note here I am saving the positions i.e indices
+//         if (column_sum_gaussian[i] > column_sum_gaussian[i - 1] && column_sum_gaussian[i] > column_sum_gaussian[i + 1]) {
+//             gaussian_peaks.push_back(i);
+//         }
+//     }
+
+
+//     // Initialize variables needed to loop over the peaks 
+//     int current_main_peak = 0;
+//     int highest_positive_peak = peaks[current_main_peak];
+//     int second_highest_positive_peak = -1;
+//     bool found_both_positive_peaks = false;
+//     int highest_negative_peak = peaks[current_main_peak];
+//     int second_highest_negative_peak = -1;
+//     bool found_both_negative_peaks  = false;
+
+
+//     // Loop to find the highest two positive peaks with a minimum gap
+//     // I added size -1 to avoid accessing an out of bound index
+//     for (long index = 0; index < peaks.size()&& !found_both_positive_peaks; index++) {
+//         // if the absolute difference between the highest peak position and the next one (indices) is higher than or equal to the gap
+//         // then we have found both peaks
+//         // check if the value of the peak is positive
+//         // go over the positive peaks search
+//         wxPrintf("%li\n", index);
+//         if (peaks[index] > 0) {
+//             if (std::abs(peaks[index + 1] - highest_positive_peak) >= min_gap) { // removed the std::abs from this line 
+//                 second_highest_positive_peak = peaks[index + 1];
+//                 if (column_sum[second_highest_positive_peak] >= 0.8 * column_sum[highest_positive_peak]) {
+//                     found_both_positive_peaks = true;
+//                 } else { // if the absolute differences is < than the gap
+//                     current_main_peak++; // add one to the current_main_peak index and consider this the first highest peak
+//                     highest_positive_peak = peaks[current_main_peak];
+//                     index = 0;  // Reset index
+//                 }
+//             }
+//         } else if ( peaks[index] < 0) {
+//             current_main_peak = 0;
+//             std::vector<int> reversed_peaks = peaks;
+//             std::reverse(reversed_peaks.begin(), reversed_peaks.end());
+//             if (std::abs(peaks[index + 1] - highest_negative_peak) >= min_gap) {
+//                 second_highest_negative_peak = peaks[index + 1];
+//                 if (column_sum[second_highest_negative_peak] >= 0.8 * column_sum[highest_negative_peak]) { // if the second highest peak is at least 80% tall from the highest
+//                     found_both_negative_peaks = true;
+//                 } else { // if the absolute differences is < than the gap
+//                     current_main_peak++; // add one to the current_main_peak index and consider this the first highest peak
+//                     highest_negative_peak = peaks[current_main_peak];
+//                     index = 0;  // Reset index
+//                 }
+//             }
+
+//         }
+
+//         float center_peak_index = current_image->logical_y_dimension / 2;
+//         if (found_both_positive_peaks && ! found_both_negative_peaks) {
+//             // save the peak with the minimum index to peak1 
+//             int peak1 = std::min(highest_positive_peak, second_highest_positive_peak);
+//             // save the peak with the highest index to peak2
+//             int peak2 = std::max(highest_positive_peak, second_highest_positive_peak);
+//             // float tube_center = std::abs(peak1 - peak2)/2;
+//             // float distance_from_center = (peak1 + peak2)/2 - center_peak_index; 
+//             // return -distance_from_center;
+//             return std::make_pair(peak1, peak2);
+//         }
+//         if (!found_both_positive_peaks && found_both_negative_peaks) {
+//             // save the peak with the minimum index to peak1 
+//             int peak1 = std::min(highest_negative_peak, second_highest_negative_peak);
+//             // save the peak with the highest index to peak2
+//             int peak2 = std::max(highest_negative_peak, second_highest_negative_peak);
+//             // float tube_center = std::abs(peak1 - peak2)/2;
+//             // float distance_from_center = (peak1 + peak2)/2 - center_peak_index; 
+//             // return -distance_from_center;
+//             return std::make_pair(peak1, peak2);
+//         }
+//         if (found_both_positive_peaks && found_both_negative_peaks) {
+//             // check if the min gap in the highest positive peak is closer to the specified min gap by the user than the negative peak
+//             int min_positive_gap = std::abs(highest_positive_peak - second_highest_positive_peak);
+//             int min_negative_gap = std::abs(highest_negative_peak - second_highest_negative_peak);
+//             if (std::abs(min_positive_gap - min_gap) <= std::abs(min_negative_gap - min_gap)) {
+//                     // then use the positive peak information
+//                     // save the peak with the minimum index to peak1 
+//                     int peak1 = std::min(highest_positive_peak, second_highest_positive_peak);
+//                     // save the peak with the highest index to peak2
+//                     int peak2 = std::max(highest_positive_peak, second_highest_positive_peak);
+//                     // float tube_center = std::abs(peak1 - peak2)/2;
+//                     // float distance_from_center = (peak1 + peak2)/2 - center_peak_index; 
+//                     // return -distance_from_center;
+//                     return std::make_pair(peak1, peak2);
+//             } else {
+//                     // save the peak with the minimum index to peak1 
+//                     int peak1 = std::min(highest_negative_peak, second_highest_negative_peak);
+//                     // save the peak with the highest index to peak2
+//                     int peak2 = std::max(highest_negative_peak, second_highest_negative_peak);
+//                     //float tube_center = std::abs(peak1 - peak2)/2;
+//                     //float distance_from_center = (peak1 + peak2)/2 - center_peak_index; 
+//                     //return -distance_from_center;
+//                     return std::make_pair(peak1, peak2);
+//             }
+
+//         }
+
+//     }
+
+// }
