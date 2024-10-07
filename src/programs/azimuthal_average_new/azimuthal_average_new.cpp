@@ -1431,6 +1431,12 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
 
         }
+
+        // Add a header file for the saved subtracted images
+        my_output_SPOT_RASTR_filename->my_header.SetDimensionsVolume(my_input_file.ReturnXSize(), my_input_file.ReturnYSize(), number_of_input_images);
+        my_output_SPOT_RASTR_filename->my_header.SetPixelSize(my_input_file.ReturnPixelSize());
+        my_output_SPOT_RASTR_filename->WriteHeader( );
+            
         delete subtract_progress;
         delete my_output_SPOT_RASTR_filename;
 
@@ -1667,7 +1673,11 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         }
         delete mask_subtract_progress;
         delete mask_projection;
-        //delete my_output_RASTR_filename;  
+        
+        // Add a header file for the saved subtracted images
+        my_output_RASTR_filename.my_header.SetDimensionsVolume(my_input_file.ReturnXSize(), my_input_file.ReturnYSize(), number_of_input_images * number_of_models);
+        my_output_RASTR_filename.my_header.SetPixelSize(my_input_file.ReturnPixelSize());
+        my_output_RASTR_filename.WriteHeader( ); 
 
     }
 
