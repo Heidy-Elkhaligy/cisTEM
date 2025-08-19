@@ -4666,6 +4666,14 @@ void Image::Allocate16fBuffer( ) {
     is_in_memory_16f          = true;
 }
 
+#include <unistd.h>
+
+unsigned long long getTotalSystemMemory( ) {
+    long pages     = sysconf(_SC_PHYS_PAGES);
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    return pages * page_size;
+}
+
 void Image::AllocateAsPointingToSliceIn3D(Image* wanted3d, long wanted_slice) {
     Deallocate( );
     is_in_real_space = wanted3d->is_in_real_space;
@@ -4681,6 +4689,11 @@ void Image::AllocateAsPointingToSliceIn3D(Image* wanted3d, long wanted_slice) {
     image_memory_should_not_be_deallocated = true;
     is_in_memory                           = true; // kind of a lie
     real_memory_allocated                  = bytes_in_slice; // kind of a lie
+
+    unsigned long long total_system_mem = getTotalSystemMemory( );
+    real_memory_allocated               = total_system_mem + 1;
+    wxPrintf("Check\n");
+    MyDebugAssertTrue(total_system_mem > real_memory_allocated, "ERROR not enough memory to complete Image::Allocate");
 
     real_values    = wanted3d->real_values + (bytes_in_slice * (wanted_slice - 1)); // point to the 3d..
     complex_values = (std::complex<float>*)real_values; // Set the complex_values to point at the newly allocated real values;
