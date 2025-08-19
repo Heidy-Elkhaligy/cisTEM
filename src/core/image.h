@@ -592,6 +592,10 @@ class Image {
     void CreateOrthogonalProjectionsImage(Image* image_to_create, bool include_projections = true, float scale_factor = 1.0f, float mask_radius_in_pixels = 0.0f);
 };
 
+#include <unistd.h>
+
+unsigned long long getTotalSystemMemory( );
+
 class BeamTiltScorer {
     CTF*   pointer_to_ctf_to_use_for_calculation;
     Image* pointer_binarised_phase_difference_spectrum;
