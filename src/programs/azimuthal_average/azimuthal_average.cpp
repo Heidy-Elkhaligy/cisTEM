@@ -56,9 +56,7 @@ IMPLEMENT_APP(AzimuthalAverageNew)
 
 void AzimuthalAverageNew::DoInteractiveUserInput( ) {
     // intial parameters
-    float    pixel_size;
-    wxString output_filename;
-
+    float pixel_size;
     // ctf parameters
     wxString input_star_filename;
     float    acceleration_voltage;
@@ -78,7 +76,6 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
     float max_tube_diameter = 0.0;
     int   bins_count        = 1; // The number of bins to use when clssifying images based on tube diameter, the min number is 1 class
     int   outer_mask_radius = 0;
-    bool  tubes_centered;
     bool  low_pass;
     float low_pass_resolution = 50.0;
 
@@ -107,23 +104,24 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
     wxString SPOT_RASTR_output_star_filename;
 
     // expert options
+    // If user chose No in set expert options the below values will be used by default
     bool set_expert_options;
     // rotation (degrees)
-    float    psi_min              = 0.0;
-    float    psi_max              = 180.0;
-    float    psi_step             = 5.0;
-    float    fine_tuning_psi_step = 0.25;
-    float    padding_factor       = 2; //(sqrt of 2)
-    bool     find_positive_peaks  = true;
-    bool     find_negative_peaks  = true;
-    wxString output_peaks_filename;
-    wxString output_diameters_filename;
-    float    cosine_edge       = 10.0;
-    float    outside_weight    = 0.0;
-    float    filter_radius     = 0.0;
-    float    outside_value     = 0.0;
-    bool     use_outside_value = false;
-    bool     use_memory        = false;
+    float    psi_min                   = 0.0;
+    float    psi_max                   = 180.0;
+    float    psi_step                  = 5.0;
+    float    fine_tuning_psi_step      = 0.25;
+    float    padding_factor            = 2; //(sqrt of 2)
+    bool     find_positive_peaks       = true;
+    bool     find_negative_peaks       = true;
+    wxString output_peaks_filename     = "peaks_output.txt";
+    wxString output_diameters_filename = "diameters_output.txt";
+    float    cosine_edge               = 10.0;
+    float    outside_weight            = 0.0;
+    float    filter_radius             = 0.0;
+    float    outside_value             = 0.0;
+    bool     use_outside_value         = false;
+    bool     use_memory                = false;
     int      max_threads;
 
     UserInput* my_input = new UserInput("AzimuthalAverageNew", 1.0);
@@ -231,8 +229,8 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
 
     delete my_input;
 
-    my_current_job.Reset(57);
-    my_current_job.ManualSetArguments("tffffbtffffbffiibfbbttbbtiiiiibbbttbttbfffffbbttffffbi", input_filename.ToUTF8( ).data( ),
+    my_current_job.Reset(56);
+    my_current_job.ManualSetArguments("tffffbtffffbffiibfbbttbbtiiiiibbbttbttbfffffbbttffffbbi", input_filename.ToUTF8( ).data( ),
                                       pixel_size,
                                       acceleration_voltage,
                                       spherical_aberration,
@@ -248,7 +246,6 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
                                       max_tube_diameter,
                                       bins_count,
                                       outer_mask_radius,
-                                      // tubes_centered,
                                       low_pass,
                                       low_pass_resolution,
                                       use_auto_corr,
@@ -294,23 +291,22 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
 
 bool AzimuthalAverageNew::DoCalculation( ) {
     // get the arguments for this job..
-    wxString input_filename                  = my_current_job.arguments[0].ReturnStringArgument( );
-    float    pixel_size                      = my_current_job.arguments[1].ReturnFloatArgument( );
-    float    acceleration_voltage            = my_current_job.arguments[2].ReturnFloatArgument( );
-    float    spherical_aberration            = my_current_job.arguments[3].ReturnFloatArgument( );
-    float    amplitude_contrast              = my_current_job.arguments[4].ReturnFloatArgument( );
-    bool     input_ctf_values_from_star_file = my_current_job.arguments[5].ReturnBoolArgument( );
-    wxString input_star_filename             = my_current_job.arguments[6].ReturnStringArgument( );
-    float    defocus_1                       = my_current_job.arguments[7].ReturnFloatArgument( );
-    float    defocus_2                       = my_current_job.arguments[8].ReturnFloatArgument( );
-    float    astigmatism_angle               = my_current_job.arguments[9].ReturnFloatArgument( );
-    float    additional_phase_shift          = my_current_job.arguments[10].ReturnFloatArgument( );
-    bool     phase_flip_only                 = my_current_job.arguments[11].ReturnBoolArgument( );
-    float    min_tube_diameter               = my_current_job.arguments[12].ReturnFloatArgument( );
-    float    max_tube_diameter               = my_current_job.arguments[13].ReturnFloatArgument( );
-    int      bins_count                      = my_current_job.arguments[14].ReturnIntegerArgument( );
-    int      outer_mask_radius               = my_current_job.arguments[15].ReturnIntegerArgument( );
-    //bool     tubes_centered                           = my_current_job.arguments[16].ReturnBoolArgument( );
+    wxString input_filename                           = my_current_job.arguments[0].ReturnStringArgument( );
+    float    pixel_size                               = my_current_job.arguments[1].ReturnFloatArgument( );
+    float    acceleration_voltage                     = my_current_job.arguments[2].ReturnFloatArgument( );
+    float    spherical_aberration                     = my_current_job.arguments[3].ReturnFloatArgument( );
+    float    amplitude_contrast                       = my_current_job.arguments[4].ReturnFloatArgument( );
+    bool     input_ctf_values_from_star_file          = my_current_job.arguments[5].ReturnBoolArgument( );
+    wxString input_star_filename                      = my_current_job.arguments[6].ReturnStringArgument( );
+    float    defocus_1                                = my_current_job.arguments[7].ReturnFloatArgument( );
+    float    defocus_2                                = my_current_job.arguments[8].ReturnFloatArgument( );
+    float    astigmatism_angle                        = my_current_job.arguments[9].ReturnFloatArgument( );
+    float    additional_phase_shift                   = my_current_job.arguments[10].ReturnFloatArgument( );
+    bool     phase_flip_only                          = my_current_job.arguments[11].ReturnBoolArgument( );
+    float    min_tube_diameter                        = my_current_job.arguments[12].ReturnFloatArgument( );
+    float    max_tube_diameter                        = my_current_job.arguments[13].ReturnFloatArgument( );
+    int      bins_count                               = my_current_job.arguments[14].ReturnIntegerArgument( );
+    int      outer_mask_radius                        = my_current_job.arguments[15].ReturnIntegerArgument( );
     bool     low_pass                                 = my_current_job.arguments[16].ReturnBoolArgument( );
     float    low_pass_resolution                      = my_current_job.arguments[17].ReturnFloatArgument( );
     bool     use_auto_corr                            = my_current_job.arguments[18].ReturnBoolArgument( );
@@ -398,7 +394,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
             }
             // FT the image
             image_stack_filtered_masked[image_counter].ForwardFFT( );
-            // convert the central pixel to zero (Is that done in real or Fouriier space??)
+            // convert the central pixel to zero (Is that done in real or Fourier space??)
             image_stack_filtered_masked[image_counter].ZeroCentralPixel( );
 
             if ( low_pass ) {
@@ -409,6 +405,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
             if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
                 loading_progress->Update(image_counter + 1);
         }
+        delete loading_progress;
     }
     // initiate default parameters for the ApplyCTFAndReturnCTFSumOfSquares function
     // (May be change that later to be expert options inputs???)
@@ -881,6 +878,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
             my_progress->Update(image_counter + 1);
     }
+
     delete my_progress;
 
     Image added_image; // This is the sum image based on the initial rotation angle calculated from auto-correlation
