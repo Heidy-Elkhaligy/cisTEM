@@ -281,11 +281,9 @@ bin_PROGRAMS =  cisTEM_job_control \
                 prepare_stack_matchtemplate \
                 sum_all_eer_files \
                 measure_template_bias \
-                azimuthal_average_new \
-                shift_or_rotate_images \
-                extract_images \
-                align_class_average_to_reference \
-                cisTEM_display 
+                cisTEM_display \
+                apply_RASTR_phi_constraints \
+                find_tube_diameters
 
 
 
@@ -1114,29 +1112,17 @@ azimuthal_average_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 azimuthal_average_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 azimuthal_average_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
-azimuthal_average_new_SOURCES  = programs/azimuthal_average_new/azimuthal_average_new.cpp
-azimuthal_average_new_CXXFLAGS = $(WX_CPPFLAGS_BASE)
-azimuthal_average_new_CPPFLAGS = $(WX_CPPFLAGS_BASE)
-azimuthal_average_new_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
-azimuthal_average_new_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+apply_RASTR_phi_constraints_SOURCES  = programs/apply_RASTR_phi_constraints/apply_RASTR_phi_constraints.cpp
+apply_RASTR_phi_constraints_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+apply_RASTR_phi_constraints_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+apply_RASTR_phi_constraints_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+apply_RASTR_phi_constraints_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
-shift_or_rotate_images_SOURCES  = programs/shift_or_rotate_images/shift_or_rotate_images.cpp
-shift_or_rotate_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
-shift_or_rotate_images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
-shift_or_rotate_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
-shift_or_rotate_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
-
-extract_images_SOURCES  = programs/extract_images/extract_images.cpp
-extract_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
-extract_images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
-extract_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
-extract_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
-
-align_class_average_to_reference_SOURCES  = programs/align_class_average_to_reference/align_class_average_to_reference.cpp
-align_class_average_to_reference_CXXFLAGS = $(WX_CPPFLAGS_BASE)
-align_class_average_to_reference_CPPFLAGS = $(WX_CPPFLAGS_BASE)
-align_class_average_to_reference_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
-align_class_average_to_reference_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+find_tube_diameters_SOURCES  = programs/find_tube_diameters/find_tube_diameters.cpp
+find_tube_diameters_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+find_tube_diameters_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+find_tube_diameters_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+find_tube_diameters_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 multiply_two_stacks_SOURCES  = programs/multiply_two_stacks/multiply_two_stacks.cpp
 multiply_two_stacks_CXXFLAGS = $(WX_CPPFLAGS_BASE)
