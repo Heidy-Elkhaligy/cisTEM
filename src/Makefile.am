@@ -283,7 +283,8 @@ bin_PROGRAMS =  cisTEM_job_control \
                 measure_template_bias \
                 cisTEM_display \
                 apply_RASTR_phi_constraints \
-                find_tube_diameters
+                find_tube_diameters \
+                create_sphere_mask
 
 
 
@@ -1123,6 +1124,12 @@ find_tube_diameters_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 find_tube_diameters_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 find_tube_diameters_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 find_tube_diameters_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+create_sphere_mask_SOURCES  = programs/create_sphere_mask/create_sphere_mask.cpp
+create_sphere_mask_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+create_sphere_mask_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+create_sphere_mask_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+create_sphere_mask_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 multiply_two_stacks_SOURCES  = programs/multiply_two_stacks/multiply_two_stacks.cpp
 multiply_two_stacks_CXXFLAGS = $(WX_CPPFLAGS_BASE)
