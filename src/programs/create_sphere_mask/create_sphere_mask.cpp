@@ -81,21 +81,21 @@ bool create_sphere_mask::DoCalculation( ) {
         sphere_mask_radius = 0.25 * box_size;
     }
 
-    Image my_white_mask_smooth;
-    my_white_mask_smooth.Allocate(box_size, box_size, box_size, true);
-    my_white_mask_smooth.SetToConstant(0.0);
+    Image my_mask_smooth;
+    my_mask_smooth.Allocate(box_size, box_size, box_size, true);
+    my_mask_smooth.SetToConstant(0.0);
     if ( create_white_sphere ) {
-        create_white_sphere_mask(&my_white_mask_smooth, x_mask_center, y_mask_center, z_mask_center, sphere_mask_radius);
+        create_white_sphere_mask(&my_mask_smooth, x_mask_center, y_mask_center, z_mask_center, sphere_mask_radius);
     }
     else {
-        create_black_sphere_mask(&my_white_mask_smooth, x_mask_center, y_mask_center, z_mask_center, sphere_mask_radius);
+        create_black_sphere_mask(&my_mask_smooth, x_mask_center, y_mask_center, z_mask_center, sphere_mask_radius);
     }
-    my_white_mask_smooth.ForwardFFT( );
-    my_white_mask_smooth.GaussianLowPassFilter((pixel_size * 2) / 150);
-    my_white_mask_smooth.BackwardFFT( );
+    my_mask_smooth.ForwardFFT( );
+    my_mask_smooth.GaussianLowPassFilter((pixel_size * 2) / 150);
+    my_mask_smooth.BackwardFFT( );
     my_output_filename.my_header.SetDimensionsVolume(box_size, box_size, box_size);
     my_output_filename.my_header.SetPixelSize(pixel_size);
-    my_white_mask_smooth.WriteSlices(&my_output_filename, 1, box_size);
+    my_mask_smooth.WriteSlices(&my_output_filename, 1, box_size);
 
     return true;
 }
