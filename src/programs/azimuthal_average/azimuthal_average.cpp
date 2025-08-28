@@ -3047,127 +3047,59 @@ void save_all_columns_sum_to_file(
 
 // Detects the two strongest outer-edge peaks in a 1D intensity profile.
 // Returns indices of the best peak pair (sorted low->high), or an empty vector if none found.
-std::pair<int, int> findOuterTubeEdges(const std::vector<float>& cols, float min_tube_diameter, float max_tube_diameter, bool find_positive_peaks, bool find_negative_peaks) {
+std::pair<int, int> findOuterTubeEdges(const std::vector<float>& cols, float min_tube_diameter, float max_tube_diameter) {
     int n = cols.size( );
     if ( n < 3 )
         return {-1, -1}; // need at least 3 points to form a peak
 
-    // 1) Find all local maxima (positive peaks).
+    // 1) Normalize the 1D profile
+    float              minVal = *std::min_element(cols.begin( ), cols.end( ));
+    float              maxVal = *std::max_element(cols.begin( ), cols.end( ));
+    std::vector<float> norm(n);
+    for ( int i = 0; i < n; ++i )
+        norm[i] = cols[i] - minVal;
+
+    float normMax = *std::max_element(norm.begin( ), norm.end( ));
+    if ( normMax <= 0.0f )
+        return {-1, -1};
+
+    // Inverted profile for negative peaks
+    std::vector<float> normInv(n);
+    for ( int i = 0; i < n; ++i )
+        normInv[i] = normMax - norm[i];
+
+    // 2) Detect peaks
     std::vector<std::pair<int, float>> posPeaks;
-    posPeaks.reserve(n / 10);
-    for ( int i = 1; i < n - 1; ++i ) {
-        if ( cols[i] > cols[i - 1] && cols[i] > cols[i + 1] ) {
-            posPeaks.emplace_back(i, cols[i]);
-        }
-    }
-
-    // 2) Find all local minima (negative peaks), storing their absolute amplitudes.
     std::vector<std::pair<int, float>> negPeaks;
-    negPeaks.reserve(n / 10);
+
     for ( int i = 1; i < n - 1; ++i ) {
-        if ( cols[i] < cols[i - 1] && cols[i] < cols[i + 1] ) {
-            // Treat negative peak by negating value to get positive amplitude
-            negPeaks.emplace_back(i, -cols[i]);
+        if ( norm[i] > norm[i - 1] && norm[i] > norm[i + 1] ) {
+            posPeaks.emplace_back(i, norm[i]);
+        }
+        if ( normInv[i] > normInv[i - 1] && normInv[i] > normInv[i + 1] ) {
+            negPeaks.emplace_back(i, normInv[i]);
         }
     }
+    // // debugging and printing the scores
+    // std::cerr << "posPeaks (idx,val): ";
+    // for ( auto& p : posPeaks )
+    //     std::cerr << "(" << p.first << "," << p.second << ") ";
+    // std::cerr << "\n";
+    // std::cerr << "negPeaks (idx,val): ";
+    // for ( auto& p : negPeaks )
+    //     std::cerr << "(" << p.first << "," << p.second << ") ";
+    // std::cerr << "\n";
 
-    // // Helper lambda to find best pair (highest score) within a list of peaks
-    // auto bestPair = [&](const std::vector<std::pair<int, float>>& peaks) -> std::pair<float, std::pair<int, int>> {
-    //     float               bestScoreInRange = -std::numeric_limits<float>::infinity( );
-    //     std::pair<int, int> bestIdxInRange   = {-1, -1};
-
-    //     float               bestScoreOutOfRange = -std::numeric_limits<float>::infinity( );
-    //     std::pair<int, int> bestIdxOutOfRange   = {-1, -1};
-    //     float               bestGapError        = std::numeric_limits<float>::infinity( );
-
-    //     const float IDEAL_GAP   = min_tube_diameter;
-    //     const float GAP_PENALTY = 0.1;
-
-    //     for ( size_t a = 0; a < peaks.size( ); ++a ) {
-    //         for ( size_t b = a + 1; b < peaks.size( ); ++b ) {
-    //             int   i      = peaks[a].first;
-    //             int   j      = peaks[b].first;
-    //             int   gap    = j - i;
-    //             float sumAmp = peaks[a].second + peaks[b].second;
-    //             float score  = sumAmp - GAP_PENALTY * std::fabs(gap - IDEAL_GAP);
-
-    //             if ( gap >= min_tube_diameter && gap <= max_tube_diameter ) {
-    //                 // candidate within range
-    //                 if ( score > bestScoreInRange ) {
-    //                     bestScoreInRange = score;
-    //                     bestIdxInRange   = {i, j};
-    //                 }
-    //             }
-    //             else {
-    //                 // candidate out of range, but keep closest
-    //                 float gapError = 0.0f;
-    //                 if ( gap < min_tube_diameter )
-    //                     gapError = min_tube_diameter - gap;
-    //                 else
-    //                     gapError = gap - max_tube_diameter;
-
-    //                 if ( gapError < bestGapError ||
-    //                      (gapError == bestGapError && score > bestScoreOutOfRange) ) {
-    //                     bestGapError        = gapError;
-    //                     bestScoreOutOfRange = score;
-    //                     bestIdxOutOfRange   = {i, j};
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     if ( bestIdxInRange.first != -1 )
-    //         return std::make_pair(bestScoreInRange, bestIdxInRange);
-    //     else
-    //         return std::make_pair(bestScoreOutOfRange, bestIdxOutOfRange);
-    // };
-
-    // // OLD Helper lambda to find best pair (highest score) within a list of peaks that was working as long as we are within the range
-    // auto bestPair = [&](const std::vector<std::pair<int, float>>& peaks) {
-    //     float               bestScore   = -std::numeric_limits<float>::infinity( );
-    //     std::pair<int, int> bestIdx     = {-1, -1}; // We will prefer gap close to minimum tube diameter by subtracting a small penalty for gap deviation.
-    //     const float         IDEAL_GAP   = min_tube_diameter;
-    //     const float         GAP_PENALTY = 0.1; // e.g. 0.1 points lost per pixel of gap deviation
-    //     // Sort peaks by index to ensure left<right
-    //     // (Assumes peaks are already in ascending index order by scan loop.)
-    //     for ( size_t a = 0; a < peaks.size( ); ++a ) {
-    //         for ( size_t b = a + 1; b < peaks.size( ); ++b ) {
-    //             int i   = peaks[a].first;
-    //             int j   = peaks[b].first;
-    //             int gap = j - i;
-    //             if ( gap < min_tube_diameter )
-    //                 continue; // enforce minimum gap
-    //             if ( gap > max_tube_diameter )
-    //                 break; // skip excessively large gaps (optional)
-    //             // Sum amplitudes
-    //             float sumAmp = peaks[a].second + peaks[b].second;
-    //             // Apply a mild penalty for deviating from ideal gap=minimum tube diameter
-    //             float score = sumAmp - GAP_PENALTY * std::fabs(gap - IDEAL_GAP);
-    //             if ( score > bestScore ) {
-    //                 bestScore = score;
-    //                 bestIdx   = {i, j};
-    //             }
-    //         }
-    //     }
-    //     return std::make_pair(bestScore, bestIdx);
-    // };
-
-    /* 
-    Removed separate in-range/out-of-range tracking.
-
-    Instead, always compute a single score.
-
-    Apply a big extra penalty if the gap is outside [min_tube_diameter, max_tube_diameter].
-
-    Still returns the best scoring pair overall (even if it’s out of range)
-    */
+    // helper function to find the best pair of peaks based on their height and distance between peaks
     auto bestPair = [&](const std::vector<std::pair<int, float>>& peaks)
             -> std::pair<float, std::pair<int, int>> {
         float               bestScore = -std::numeric_limits<float>::infinity( );
         std::pair<int, int> bestIdx   = {-1, -1};
 
+        // Adding gap penalty and out of range penalty so that we would favor more the peaks within the range, but also if nothing was found within range, out of range peaks are saved and returned
         const float IDEAL_GAP           = min_tube_diameter;
         const float GAP_PENALTY         = 0.1f; // e.g. 0.1 points lost per pixel of gap deviation
-        const float OUT_OF_RANGE_FACTOR = 2.0f; // scale factor for out-of-range penalty
+        const float OUT_OF_RANGE_FACTOR = 10.0f; // scale factor for out-of-range penalty- changed that from 2 to 10 to heavily penalize out of range to favor in range more
 
         for ( size_t a = 0; a < peaks.size( ); ++a ) {
             for ( size_t b = a + 1; b < peaks.size( ); ++b ) {
