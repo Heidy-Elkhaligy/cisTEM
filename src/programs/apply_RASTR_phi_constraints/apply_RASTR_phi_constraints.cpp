@@ -14,6 +14,7 @@ class
 };
 
 float angle_within360(float angle);
+float angle_difference(float a, float b);
 
 IMPLEMENT_APP(apply_RASTR_phi_constraints)
 
@@ -95,10 +96,36 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
         // make sure input phi angle is positive and within 0-360
         input_phi                  = angle_within360(input_phi);
         float reference_phi        = reference_parameters.phi;
-        float mirror_reference_phi = reference_phi + 180.0;
+        float mirror_reference_phi = angle_within360(reference_phi + 180.0f); // wrap the angle back to within 360 in case it went out of range
+        float input_psi            = input_parameters.psi;
+        // choose which reference to compare against based on psi
+        // since the upweighted regions is projected in a opposite direction when psi is 270
+        // float phi_to_use;
+        // if ( input_psi < 180.0f ) {
+        //     phi_to_use = reference_phi;
+        // }
+        // else {
+        //     // I need to keep phi as reference if it is 0 or 180 as when rotataed 0 is istill 0 and 180 is still the same and shouldn't be flipped??!!!
+        //     // if ( reference_phi == 0 || reference_phi == 180.0 ) {
+        //     //     phi_to_use = reference_phi;
+        //     // }
+        //     // else {
+        //     //     phi_to_use = mirror_reference_phi;
+        //     // }
+        //     // wxPrintf("The reference phi before adjustments is %f \n", reference_phi);
+        //     reference_phi = angle_within360(-reference_phi); // if 30 so it will become -30 and then wrap it wit the angle_within360 to make it go to 330??
+        //     // wxPrintf("The reference phi after adjustments is %f \n", reference_phi);
+
+        //     phi_to_use = reference_phi; //updated reference phi
+        // }
+
+        // float diff = angle_difference(input_phi, phi_to_use);
+        float diff        = angle_difference(input_phi, reference_phi);
+        float mirror_diff = angle_difference(input_phi, mirror_reference_phi);
 
         if ( classification_results ) {
-            if ( (input_parameters.occupancy >= occupancy_threshold) && (input_phi >= reference_phi - angular_range && input_phi <= reference_phi + angular_range) ) { //|| (input_phi >= mirror_reference_phi - angular_range && input_phi <= mirror_reference_phi + angular_range)
+            if ( (input_parameters.occupancy >= occupancy_threshold) && (fabs(diff) <= angular_range) ) {
+                // if ( (input_parameters.occupancy >= occupancy_threshold) && (input_phi >= reference_phi - angular_range && input_phi <= reference_phi + angular_range) ) { //|| (input_phi >= mirror_reference_phi - angular_range && input_phi <= mirror_reference_phi + angular_range)
                 // Only keep the images with psi around 90 or 270 (any other number will be considered misaligned or wrong particle)
                 // float input_psi = input_parameters.psi;
                 // float psi_range = 5.0;
@@ -147,8 +174,9 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
             }
         }
         else {
-            // bool keep = false;
-            if ( (input_phi >= reference_phi - angular_range && input_phi <= reference_phi + angular_range) ) {
+            if ( fabs(diff) <= angular_range || fabs(mirror_diff) <= angular_range ) { // keeping what is either 0 or its opposite
+                // keeping only the input phi around 0 or 180 similar to reference phi
+                //if ( (input_phi >= reference_phi - angular_range && input_phi <= reference_phi + angular_range) ) {
                 //if ( (input_phi >= reference_phi - angular_range && input_phi <= reference_phi + angular_range) ) { //|| (input_phi >= mirror_reference_phi - angular_range && input_phi <= mirror_reference_phi + angular_range)
                 // Only keep the images with psi around 90 or 270 (any other number will be considered misaligned or wrong particle)
                 // float input_psi = input_parameters.psi;
@@ -232,4 +260,10 @@ float angle_within360(float angle) {
     else {
         return angle;
     }
+}
+
+// Compute smallest signed difference between two angles in (-180, 180) to wrap-around boundary (0°/360°)
+float angle_difference(float a, float b) {
+    float diff = fmodf(a - b + 540.0f, 360.0f) - 180.0f; // +540 to ensure that the angle is always positive before modulus and fmodf(..., 360.0f) → brings it into (0, 360), finally , -180 → shifts into (-180, 180]
+    return diff;
 }
