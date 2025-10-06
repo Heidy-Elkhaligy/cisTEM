@@ -100,64 +100,65 @@ bool create_sphere_mask::DoCalculation( ) {
     return true;
 }
 
+void create_black_sphere_mask(Image* mask_file, int x_sphere_center, int y_sphere_center, int z_spehere_center, float radius) {
+
+    int boxsize = mask_file->logical_x_dimension;
+    // initialize the mask file to be 1.0
+    mask_file->SetToConstant(1.0);
+
+    long pixel_counter = 0;
+
+    for ( int k = 0; k < mask_file->logical_z_dimension; k++ ) {
+        int dz    = k - z_spehere_center;
+        int dz_sq = dz * dz;
+        for ( int j = 0; j < mask_file->logical_y_dimension; j++ ) {
+            int dy    = j - y_sphere_center;
+            int dy_sq = dy * dy;
+            for ( int i = 0; i < mask_file->logical_x_dimension; i++ ) {
+                int   dx    = i - x_sphere_center;
+                int   dx_sq = dx * dx;
+                float d     = sqrtf(dx_sq + dy_sq + dz_sq);
+                if ( d < radius ) {
+                    mask_file->real_values[pixel_counter] = 0.0;
+                }
+                // else not needed as mask_file is set to 1.0
+                // else {
+                //     mask_file->real_values[pixel_counter] = 1.0;
+                // }
+                pixel_counter++;
+            }
+            pixel_counter += mask_file->padding_jump_value;
+        }
+    }
+}
+
 void create_white_sphere_mask(Image* mask_file, int x_sphere_center, int y_sphere_center, int z_spehere_center, float radius) {
 
-    int   boxsize = mask_file->logical_x_dimension;
-    int   i, j, k;
-    int   dx, dy, dz;
-    float d;
+    int boxsize = mask_file->logical_x_dimension;
     // initialize the mask to 0.0
     mask_file->SetToConstant(0.0);
 
     long pixel_counter = 0;
-    for ( k = 0; k < mask_file->logical_z_dimension; k++ ) {
-        for ( j = 0; j < mask_file->logical_y_dimension; j++ ) {
-            for ( i = 0; i < mask_file->logical_x_dimension; i++ ) {
-                dx = i - x_sphere_center;
-                dy = j - y_sphere_center;
-                dz = k - z_spehere_center;
-                d  = sqrtf(dx * dx + dy * dy + dz * dz);
+    for ( int k = 0; k < mask_file->logical_z_dimension; k++ ) {
+        int dz    = k - z_spehere_center;
+        int dz_sq = dz * dz;
+        for ( int j = 0; j < mask_file->logical_y_dimension; j++ ) {
+            int dy    = j - y_sphere_center;
+            int dy_sq = dy * dy;
+            for ( int i = 0; i < mask_file->logical_x_dimension; i++ ) {
+                int dx    = i - x_sphere_center;
+                int dx_sq = dx * dx;
+                int d     = sqrtf(dx_sq + dy_sq + dz_sq);
                 if ( d < radius ) {
                     mask_file->real_values[pixel_counter] = 1.0;
                 }
-                else {
-                    mask_file->real_values[pixel_counter] = 0.0;
-                }
+                // else {
+                //     mask_file->real_values[pixel_counter] = 0.0;
+                // }
                 pixel_counter++;
             }
             pixel_counter += mask_file->padding_jump_value;
         }
     }
     //mask_file->QuickAndDirtyWriteSlices("make_white_sphere_mask_inside_function.mrc", 1, mask_file->logical_z_dimension);
-}
-
-void create_black_sphere_mask(Image* mask_file, int x_sphere_center, int y_sphere_center, int z_spehere_center, float radius) {
-
-    int   boxsize = mask_file->logical_x_dimension;
-    int   i, j, k;
-    int   dx, dy, dz;
-    float d;
-    // initialize the mask file to be 1.0
-    mask_file->SetToConstant(1.0);
-
-    long pixel_counter = 0;
-
-    for ( k = 0; k < mask_file->logical_z_dimension; k++ ) {
-        for ( j = 0; j < mask_file->logical_y_dimension; j++ ) {
-            for ( i = 0; i < mask_file->logical_x_dimension; i++ ) {
-                dx = i - x_sphere_center;
-                dy = j - y_sphere_center;
-                dz = k - z_spehere_center;
-                d  = sqrtf(dx * dx + dy * dy + dz * dz);
-                if ( d < radius ) {
-                    mask_file->real_values[pixel_counter] = 0.0;
-                }
-                else {
-                    mask_file->real_values[pixel_counter] = 1.0;
-                }
-                pixel_counter++;
-            }
-            pixel_counter += mask_file->padding_jump_value;
-        }
-    }
 }
