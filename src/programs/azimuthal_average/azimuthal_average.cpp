@@ -224,8 +224,6 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
 
     use_memory = my_input->GetYesNoFromUser("Allocate images to memory?", "Choice between memory allocation or using functions; no is recommended for systems with limited memory.", "NO");
 
-    use_memory = my_input->GetYesNoFromUser("Allocate images to memory?", "Choice between memory allocation or using functions; no is recommended for systems with limited memory.", "NO");
-
 #ifdef _OPENMP
     max_threads = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
 #else
@@ -904,11 +902,6 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
             my_progress->Update(image_counter + 1);
     }
-    // initiate default parameters for the ApplyCTFAndReturnCTFSumOfSquares function
-    // (May be change that later to be expert options inputs???)
-    bool absolute        = false;
-    bool apply_beam_tilt = false;
-    bool apply_envelope  = false;
 
     delete my_progress;
 
@@ -2298,9 +2291,8 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     if ( image_stack_filtered_masked != nullptr )
         delete[] image_stack_filtered_masked;
 
-        ////////////////////////////////////////////////////////////////////////////////////////////////////s/////////////////////////////////////////////////////
-        ////////////// THIS PART MAY CAUSE ERRORS IN DIAMETERS CALCULATIONS IF THE MASK IS TOOO TIGHT AND REMOVED SOME OF THE TUBE EDGES/////////////////////////
-        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    return true;
+}
 
 /// try the column sum but add a declaration at the begining of the code
 std::vector<float> sum_image_columns(Image* current_image) {
@@ -2377,10 +2369,7 @@ void ApplyCTFAndReturnCTFSumOfSquares(Image& image, CTF ctf_to_apply, bool absol
 
     //std::vector<float> squared_ctf_values; // Vector to store squared CTF values
 
-        // save an index for the class assignment of each image based on its diameter
-        int which_bin_index_int = (tube_diameter - min_tube_diameter) / bin_range; // it will always round down so 0.9999 > 0
-        // save the bin assignment so that I don't need to recalculate the diameter again outside that loop
-        diameter_bins[image_counter] = which_bin_index_int;
+    long pixel_counter = 0;
 
     for ( int j = 0; j <= image.physical_upper_bound_complex_y; j++ ) {
         float y_coord    = image.ReturnFourierLogicalCoordGivenPhysicalCoord_Y(j) * image.fourier_voxel_size_y;
@@ -2397,7 +2386,6 @@ void ApplyCTFAndReturnCTFSumOfSquares(Image& image, CTF ctf_to_apply, bool absol
             else {
                 azimuth = atan2(y_coord, x_coord);
             }
-        }
 
             // Compute the square of the frequency
             float frequency_squared = x_coord_sq + y_coord_sq;
@@ -2431,37 +2419,19 @@ void ApplyCTFAndReturnCTFSumOfSquares(Image& image, CTF ctf_to_apply, bool absol
 
             pixel_counter++;
         }
-        temporary_average_image.ApplyCTF(current_ctf);
-        temporary_average_image.BackwardFFT( );
-        average_images[image_counter].CopyFrom(&temporary_average_image);
-        //temporary_average_image.QuickAndDirtyWriteSlice("average_image_with_ctf.mrc", image_counter + 1);
     }
 
     //return ctf_sum_of_squares;
 }
 
-    /// Getting the correct rotation and shift using cross-correlation
-    float inner_radius_for_peak_search;
-    float outer_radius_for_peak_search;
-    inner_radius_for_peak_search = 0.0; // inner radius should be set to 0
-    outer_radius_for_peak_search = x_dim / 2;
+void sum_image_direction(Image* current_image, int dim) {
+    // image must be in real-space
+    Image directional_image_sum;
+    directional_image_sum.Allocate(current_image->logical_x_dimension, current_image->logical_y_dimension, true);
+    directional_image_sum.SetToConstant(0.0);
 
-    std::vector<float> best_correlation_score(number_of_input_images, -FLT_MAX);
-    std::vector<float> best_psi_value(number_of_input_images, 0.0f);
-    std::vector<float> best_x_shift_value(number_of_input_images, 0.0f);
-    std::vector<float> best_y_shift_value(number_of_input_images, 0.0f);
-
-    Image my_image;
-    Image my_image_copy;
-    Image my_image_tuned;
-    Image average_image;
-    Image tuning_average_image;
-    float tuned_rotation_range = psi_step; ///2
-    float tuned_step_size      = fine_tuning_psi_step;
-    Image fine_tuning_average_image;
-
-    wxPrintf("\nAligning Images...\n\n");
-    ProgressBar* my_aln_progress = new ProgressBar(number_of_input_images);
+    // x-direction
+    if ( dim == 1 ) {
 
         long pixel_counter = 0;
 
@@ -2485,51 +2455,13 @@ void ApplyCTFAndReturnCTFSumOfSquares(Image& image, CTF ctf_to_apply, bool absol
                 directional_image_sum.real_values[pixel_coord_xy] = directional_image_sum.real_values[pixel_coord_y];
                 pixel_counter++;
             }
-        }
-        my_image.BackwardFFT( );
-        //my_image.QuickAndDirtyWriteSlice("low_pass_filtered_image_for_comparison.mrc", aln_image_counter + 1);
-
-        // initial angle search will start from the rotation angle we got from the auto-correlation
-        // then change the auto-correlation angle to be within 180
-        // do another search within +/- 90 degrees of the auto-correlation psi angle or the FT psi angle (+90)
-        // only at this point we need to adjust the angle before cross-correlation but later it will be already correct and no further adjustments
-        float local_best_corr_score = -FLT_MAX;
-        float local_best_psi        = 0.0f;
-        float local_best_x_shift    = 0.0f;
-        float local_best_y_shift    = 0.0f;
-
-        float current_best_psi;
-        if ( use_auto_corr ) {
-            current_best_psi = tube_rotation[aln_image_counter];
-        }
-        if ( use_ft ) {
-            current_best_psi = tube_rotation[aln_image_counter] + 90.0;
+            pixel_counter += directional_image_sum.padding_jump_value;
         }
 
-        float angle_range   = 180.0;
-        float psi_min_angle = current_best_psi - 0.5 * angle_range;
-        float psi_max_angle = current_best_psi + 0.5 * angle_range;
-
-        for ( float psi = psi_min_angle; psi < psi_max_angle; psi += psi_step ) {
-            // create a new peak to save the cross-correlation peak values
-            Peak current_peak;
-            average_image.CopyFrom(&average_images[aln_image_counter]);
-
-            //will rotate the original image to be aligned with the sum image to facilitate the shift calculations
-            my_image_copy.Allocate(x_dim, y_dim, true);
-            my_image_copy.CopyFrom(&my_image);
-            my_image_copy.Rotate2DInPlace(psi, FLT_MAX);
-            // // make directional sum to eliminate any vertical signal
-            // sum_image_direction(&my_image_copy, 2);
-            // // calculate the cross correlation of the reference image with the rotated image
-            average_image.CalculateCrossCorrelationImageWith(&my_image_copy);
-
-            if ( outer_mask_radius != 0 ) {
-                average_image.CircleMask(outer_mask_radius);
-            }
-            else if ( outer_mask_radius == 0 ) {
-                average_image.CircleMask(x_dim * 0.45);
-            }
+        directional_image_sum.DivideByConstant(directional_image_sum.logical_x_dimension);
+    }
+    // y-direction
+    else {
 
         long pixel_counter = 0;
 
@@ -2541,6 +2473,7 @@ void ApplyCTFAndReturnCTFSumOfSquares(Image& image, CTF ctf_to_apply, bool absol
                 directional_image_sum.real_values[pixel_coord_x] += current_image->real_values[pixel_coord_xy];
                 pixel_counter++;
             }
+            pixel_counter += current_image->padding_jump_value;
         }
 
         // repeat column sum into my_vertical_sum
@@ -2552,16 +2485,16 @@ void ApplyCTFAndReturnCTFSumOfSquares(Image& image, CTF ctf_to_apply, bool absol
                 directional_image_sum.real_values[pixel_coord_xy] = directional_image_sum.real_values[pixel_coord_x];
                 pixel_counter++;
             }
+            pixel_counter += directional_image_sum.padding_jump_value;
         }
 
-        best_correlation_score[aln_image_counter] = local_best_corr_score;
-        best_psi_value[aln_image_counter]         = local_best_psi;
-        best_x_shift_value[aln_image_counter]     = local_best_x_shift;
-        best_y_shift_value[aln_image_counter]     = local_best_y_shift;
+        directional_image_sum.DivideByConstant(directional_image_sum.logical_y_dimension);
+    }
 
-        // Updating the tube diameters
-        final_image.Allocate(x_dim, y_dim, true);
-        final_image.SetToConstant(0.0);
+    // copy to current iamge
+    current_image->CopyFrom(&directional_image_sum);
+    directional_image_sum.Deallocate( );
+}
 
 void apply_ctf(Image* current_image, CTF ctf_to_apply, float* ctf_sum_of_squares, bool absolute, bool do_fill_sum_of_squares) {
 
@@ -2652,30 +2585,7 @@ float ReturnAverageOfRealValuesOnVerticalEdges(Image* current_image) {
                     address += current_image->padding_jump_value + 1;
                     number_of_pixels += 2;
                 }
-                pixel_counter += projection_image.padding_jump_value;
             }
-
-            scale_factor = sum_of_pixelwise_product / sum_of_squares;
-            //wxPrintf("The scale factor of image %li is %f \n", subtraction_image_counter+1, scale_factor);
-
-            // multiply by the scaling factor calculated
-            projection_image.MultiplyByConstant((scale_factor));
-#pragma omp critical
-            projection_image.WriteSlice(&SPOT_RASTR_projections_output, subtraction_image_counter + 1);
-
-            //subtract the averaged sum image
-            subtracted_image.SubtractImage(&projection_image);
-
-            padded_projection_image.Deallocate( );
-            projection_image.Deallocate( );
-            // write the subtracted images
-#pragma omp critical
-            subtracted_image.WriteSlice(&my_output_SPOT_RASTR_filename, subtraction_image_counter + 1);
-            subtracted_image.Deallocate( );
-
-            if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
-
-                subtract_progress->Update(subtraction_image_counter + 1);
         }
     }
 
@@ -2847,7 +2757,6 @@ std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols, float min
                 }
             }
         }
-    }
 
         return std::make_pair(bestScore, bestIdx);
     };
@@ -2925,238 +2834,3 @@ std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols, float min
 
     return std::make_pair(bestPairIdx.first, bestPairIdx.second);
 }
-
-// Function to ensure the angle is within the range [0, 360)
-float angle_within360(float angle) {
-    if ( angle < 0.0 ) {
-        angle += 360.0;
-        return angle_within360(angle);
-    }
-}
-
-// calculates the average of real values on the vertical edges
-float ReturnAverageOfRealValuesOnVerticalEdges(Image* current_image) {
-    double sum;
-    long   number_of_pixels;
-    int    pixel_counter;
-    int    line_counter;
-    int    plane_counter;
-    long   address;
-
-    sum              = 0.0;
-    number_of_pixels = 0;
-    address          = 0;
-
-    if ( current_image->logical_z_dimension == 1 ) {
-        // Two-dimensional image
-        for ( line_counter = 0; line_counter < current_image->logical_y_dimension; line_counter++ ) {
-            sum += current_image->real_values[address];
-            address += current_image->logical_x_dimension - 1;
-            sum += current_image->real_values[address];
-            address += current_image->padding_jump_value + 1;
-            number_of_pixels += 2;
-        }
-    }
-    else {
-        // Three-dimensional volume
-        for ( plane_counter = 0; plane_counter < current_image->logical_z_dimension; plane_counter++ ) {
-            for ( line_counter = 0; line_counter < current_image->logical_y_dimension; line_counter++ ) {
-                if ( line_counter == 0 || line_counter == current_image->logical_y_dimension - 1 ) {
-                    // First and last line of that section
-                    for ( pixel_counter = 0; pixel_counter < current_image->logical_x_dimension; pixel_counter++ ) {
-                        sum += current_image->real_values[address];
-                        address++;
-                    }
-                    address += current_image->padding_jump_value;
-                    number_of_pixels += current_image->logical_x_dimension;
-                }
-                else {
-                    // All other lines (only count first and last pixel)
-                    sum += current_image->real_values[address];
-                    address += current_image->logical_x_dimension - 1;
-                    sum += current_image->real_values[address];
-                    address += current_image->padding_jump_value + 1;
-                    number_of_pixels += 2;
-                }
-            }
-        }
-    }
-
-    return sum / float(number_of_pixels);
-}
-
-void create_black_sphere_mask(Image* mask_file, int x_sphere_center, int y_sphere_center, int z_spehere_center, float radius) {
-
-    int   boxsize = mask_file->logical_x_dimension;
-    int   i, j, k;
-    int   dx, dy, dz;
-    float d;
-    // initialize the mask file to be 1.0
-    mask_file->SetToConstant(1.0);
-
-    long pixel_counter = 0;
-
-    for ( k = 0; k < mask_file->logical_z_dimension; k++ ) {
-        for ( j = 0; j < mask_file->logical_y_dimension; j++ ) {
-            for ( i = 0; i < mask_file->logical_x_dimension; i++ ) {
-                dx = i - x_sphere_center;
-                dy = j - y_sphere_center;
-                dz = k - z_spehere_center;
-                d  = sqrtf(dx * dx + dy * dy + dz * dz);
-                if ( d < radius ) {
-                    mask_file->real_values[pixel_counter] = 0.0;
-                }
-                else {
-                    mask_file->real_values[pixel_counter] = 1.0;
-                }
-                pixel_counter++;
-            }
-            pixel_counter += mask_file->padding_jump_value;
-        }
-    }
-}
-
-void create_white_sphere_mask(Image* mask_file, int x_sphere_center, int y_sphere_center, int z_spehere_center, float radius) {
-
-    int   boxsize = mask_file->logical_x_dimension;
-    int   i, j, k;
-    int   dx, dy, dz;
-    float d;
-    // initialize the mask to 0.0
-    mask_file->SetToConstant(0.0);
-
-    long pixel_counter = 0;
-    for ( k = 0; k < mask_file->logical_z_dimension; k++ ) {
-        for ( j = 0; j < mask_file->logical_y_dimension; j++ ) {
-            for ( i = 0; i < mask_file->logical_x_dimension; i++ ) {
-                dx = i - x_sphere_center;
-                dy = j - y_sphere_center;
-                dz = k - z_spehere_center;
-                d  = sqrtf(dx * dx + dy * dy + dz * dz);
-                if ( d < radius ) {
-                    mask_file->real_values[pixel_counter] = 1.0;
-                }
-                else {
-                    mask_file->real_values[pixel_counter] = 0.0;
-                }
-                pixel_counter++;
-            }
-            pixel_counter += mask_file->padding_jump_value;
-        }
-    }
-    //mask_file->QuickAndDirtyWriteSlices("make_white_sphere_mask_inside_function.mrc", 1, mask_file->logical_z_dimension);
-}
-
-void save_all_columns_sum_to_file(
-        const std::vector<std::vector<float>>& all_columns_sum,
-        const std::string&                     filename) {
-    std::ofstream out_file(filename);
-    if ( ! out_file.is_open( ) ) {
-        std::cerr << "Error: Could not open file " << filename << " for writing.\n";
-        //return;
-    }
-
-    out_file << std::fixed << std::setprecision(2); // Set float precision to 2 decimal places
-
-    for ( const auto& row : all_columns_sum ) {
-        for ( size_t i = 0; i < row.size( ); ++i ) {
-            out_file << row[i];
-            if ( i < row.size( ) - 1 )
-                out_file << ", ";
-        }
-        out_file << '\n';
-    }
-
-    out_file.close( );
-}
-
-// Detects the two strongest outer-edge peaks in a 1D intensity profile.
-// Returns indices of the best peak pair (sorted low->high), or an empty vector if none found.
-std::pair<int, int> findOuterTubeEdges(const std::vector<float>& cols, float min_tube_diameter, float max_tube_diameter) {
-    int n = cols.size( );
-    if ( n < 3 )
-        return {-1, -1}; // need at least 3 points to form a peak
-
-    // 1) Normalize the 1D profile
-    float              minVal = *std::min_element(cols.begin( ), cols.end( ));
-    float              maxVal = *std::max_element(cols.begin( ), cols.end( ));
-    std::vector<float> norm(n);
-    for ( int i = 0; i < n; ++i )
-        norm[i] = cols[i] - minVal;
-
-    float normMax = *std::max_element(norm.begin( ), norm.end( ));
-    if ( normMax <= 0.0f )
-        return {-1, -1};
-
-    // Inverted profile for negative peaks
-    std::vector<float> normInv(n);
-    for ( int i = 0; i < n; ++i )
-        normInv[i] = normMax - norm[i];
-
-    // 2) Detect peaks
-    std::vector<std::pair<int, float>> posPeaks;
-    std::vector<std::pair<int, float>> negPeaks;
-
-    for ( int i = 1; i < n - 1; ++i ) {
-        if ( norm[i] > norm[i - 1] && norm[i] > norm[i + 1] ) {
-            posPeaks.emplace_back(i, norm[i]);
-        }
-        if ( normInv[i] > normInv[i - 1] && normInv[i] > normInv[i + 1] ) {
-            negPeaks.emplace_back(i, normInv[i]);
-        }
-    }
-    // // debugging and printing the scores
-    // std::cerr << "posPeaks (idx,val): ";
-    // for ( auto& p : posPeaks )
-    //     std::cerr << "(" << p.first << "," << p.second << ") ";
-    // std::cerr << "\n";
-    // std::cerr << "negPeaks (idx,val): ";
-    // for ( auto& p : negPeaks )
-    //     std::cerr << "(" << p.first << "," << p.second << ") ";
-    // std::cerr << "\n";
-
-    // helper function to find the best pair of peaks based on their height and distance between peaks
-    auto bestPair = [&](const std::vector<std::pair<int, float>>& peaks)
-            -> std::pair<float, std::pair<int, int>> {
-        float               bestScore = -std::numeric_limits<float>::infinity( );
-        std::pair<int, int> bestIdx   = {-1, -1};
-
-        // Adding gap penalty and out of range penalty so that we would favor more the peaks within the range, but also if nothing was found within range, out of range peaks are saved and returned
-        const float IDEAL_GAP           = min_tube_diameter;
-        const float GAP_PENALTY         = 0.1f; // e.g. 0.1 points lost per pixel of gap deviation
-        const float OUT_OF_RANGE_FACTOR = 10.0f; // scale factor for out-of-range penalty- changed that from 2 to 10 to heavily penalize out of range to favor in range more
-
-        for ( size_t a = 0; a < peaks.size( ); ++a ) {
-            for ( size_t b = a + 1; b < peaks.size( ); ++b ) {
-                int i   = peaks[a].first;
-                int j   = peaks[b].first;
-                int gap = j - i;
-
-                float sumAmp = peaks[a].second + peaks[b].second;
-                float score  = sumAmp - GAP_PENALTY * std::fabs(gap - IDEAL_GAP);
-
-                // scale penalty by how far out of range the gap is
-                if ( gap < min_tube_diameter ) {
-                    score -= OUT_OF_RANGE_FACTOR * (min_tube_diameter - gap);
-                }
-                else if ( gap > max_tube_diameter ) {
-                    score -= OUT_OF_RANGE_FACTOR * (gap - max_tube_diameter);
-                }
-
-                if ( score > bestScore ) {
-                    bestScore = score;
-                    bestIdx   = {i, j};
-                }
-            }
-        }
-
-        return std::make_pair(bestScore, bestIdx);
-    };
-
-    // 3) Find best pair among positive peaks and among negative peaks.
-    auto [scorePos, bestPos] = bestPair(posPeaks);
-    auto [scoreNeg, bestNeg] = bestPair(negPeaks);
-
-    return difference_of_squares;
-}
-
