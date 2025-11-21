@@ -297,7 +297,9 @@ bin_PROGRAMS =  cisTEM_job_control \
                 cisTEM_display \
                 apply_RASTR_phi_constraints \
                 find_tube_diameters \
-                create_sphere_mask
+                create_sphere_mask \
+                shift_or_rotate_images \
+                rotation_calculation
 
 
 
@@ -1038,6 +1040,17 @@ prepare_stack_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 prepare_stack_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 prepare_stack_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
+shift_or_rotate_images_SOURCES  = programs/shift_or_rotate_images/shift_or_rotate_images.cpp
+shift_or_rotate_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+shift_or_rotate_images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+shift_or_rotate_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+shift_or_rotate_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+rotation_calculation_SOURCES  = programs/rotation_calculation/rotation_calculation.cpp
+rotation_calculation_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+rotation_calculation_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+rotation_calculation_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+rotation_calculation_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 prepare_stack_classaverage_SOURCES  = programs/prepare_stack_classaverage/prepare_stack_classaverage.cpp
 prepare_stack_classaverage_CXXFLAGS = $(WX_CPPFLAGS_BASE)
