@@ -3676,54 +3676,6 @@ void Image::GaussianHighPassFilter(float sigma) {
     }
 }
 
-void Image::ApplyRampFilter( ) {
-    float x;
-    float y;
-    float z;
-
-    float frequency_squared;
-    float current_frequency;
-    // Determined because each pixel is a square; Nyquist frequency = 0.5 cycle/sample, and because each pixel (which is the sample) has a max length of
-    // sqrt(2) because of the diagonal, the max frequency can only be half of that
-    float max_frequency = 0.5f * sqrt(2);
-    float current_filter;
-    bool  do_reverse_FFT = false;
-
-    long pixel_counter = 0;
-
-    if ( is_in_real_space ) {
-        this->ForwardFFT( );
-        do_reverse_FFT = true;
-    }
-    // Go through and calculate the total frequency, from all dimensions
-    for ( int k = 0; k <= physical_upper_bound_complex_z; k++ ) {
-        z = powf(ReturnFourierLogicalCoordGivenPhysicalCoord_Z(k) * fourier_voxel_size_z, 2);
-
-        for ( int j = 0; j <= physical_upper_bound_complex_y; j++ ) {
-            y = powf(ReturnFourierLogicalCoordGivenPhysicalCoord_Y(j) * fourier_voxel_size_y, 2);
-
-            for ( int i = 0; i <= physical_upper_bound_complex_x; i++ ) {
-                x = powf(ReturnFourierLogicalCoordGivenPhysicalCoord_X(i) * fourier_voxel_size_x, 2);
-
-                frequency_squared = x + y + z;
-                // Get the actual frequency, set the filter
-                current_frequency = sqrt(frequency_squared);
-                current_filter    = current_frequency / max_frequency;
-
-                // If the current filter is negative, just set the pixel to 0
-                if ( current_filter < 0.0f )
-                    current_filter = 0.0f;
-
-                // Apply filter
-                complex_values[pixel_counter] *= current_filter;
-                pixel_counter++;
-            }
-        }
-    }
-    if ( do_reverse_FFT )
-        this->BackwardFFT( );
-}
-
 void Image::RandomisePhases(float wanted_radius_in_reciprocal_pixels) {
     bool need_to_fft = false;
 
@@ -4667,14 +4619,6 @@ void Image::Allocate16fBuffer( ) {
     is_in_memory_16f          = true;
 }
 
-#include <unistd.h>
-
-unsigned long long getTotalSystemMemory( ) {
-    long pages     = sysconf(_SC_PHYS_PAGES);
-    long page_size = sysconf(_SC_PAGE_SIZE);
-    return pages * page_size;
-}
-
 void Image::AllocateAsPointingToSliceIn3D(Image* wanted3d, long wanted_slice) {
     Deallocate( );
     is_in_real_space = wanted3d->is_in_real_space;
@@ -4690,11 +4634,6 @@ void Image::AllocateAsPointingToSliceIn3D(Image* wanted3d, long wanted_slice) {
     image_memory_should_not_be_deallocated = true;
     is_in_memory                           = true; // kind of a lie
     real_memory_allocated                  = bytes_in_slice; // kind of a lie
-
-    unsigned long long total_system_mem = getTotalSystemMemory( );
-    real_memory_allocated               = total_system_mem + 1;
-    wxPrintf("Check\n");
-    MyDebugAssertTrue(total_system_mem > real_memory_allocated, "ERROR not enough memory to complete Image::Allocate");
 
     real_values    = wanted3d->real_values + (bytes_in_slice * (wanted_slice - 1)); // point to the 3d..
     complex_values = (std::complex<float>*)real_values; // Set the complex_values to point at the newly allocated real values;
