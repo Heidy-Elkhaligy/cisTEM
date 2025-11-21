@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
+#include <iomanip> // for std::setprecision
 
 class
         apply_RASTR_phi_constraints : public MyApp {
@@ -11,6 +12,20 @@ class
     void DoInteractiveUserInput( );
 
   private:
+};
+
+struct Result {
+    int   image_index;
+    float input_phi;
+    float reference_phi;
+    float difference;
+    float adj_ref_phi;
+    float input_psi;
+    float ref_psi;
+    float adj_ref_psi;
+    float input_theta; //no need for ref_theta as it was set to 90
+    float ref_theta;
+    float adj_ref_theta;
 };
 
 float angle_within360(float angle);
@@ -77,6 +92,31 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
 
     long  number_of_input_images = my_input_images.ReturnNumberOfSlices( );
     Image my_image;
+    //Added new as OMP was causing problems when writing images to a file that is not opened and have set dimensions and header information
+    MRCFile removed_images_output("removed_images.mrc", true);
+    if ( ! removed_images_output.IsOpen( ) ) {
+        removed_images_output.OpenFile("removed_images.mrc", true);
+        if ( ! removed_images_output.IsOpen( ) ) {
+            wxPrintf("ERROR: Could not open '%s' for writing\n", "removed_images.mrc");
+            DEBUG_ABORT;
+        }
+    }
+    removed_images_output.my_header.SetDimensionsImage(my_input_images.ReturnXSize( ), my_input_images.ReturnYSize( ));
+    removed_images_output.SetPixelSize(my_input_images.ReturnPixelSize( ));
+    removed_images_output.WriteHeader( );
+
+    std::ofstream angles_file("difference_angles_file.txt"); // Open file once
+
+    if ( ! angles_file.is_open( ) ) {
+        std::cerr << "Error: Could not open difference_angles_file.txt\n";
+        //return;
+    }
+
+    angles_file << std::fixed << std::setprecision(2); // Optional: set float precision
+
+    angles_file << "image_index, input_phi, reference_phi, difference, adj_ref_phi, input_psi, reference_psi, adj_ref_psi, input_theta, ref_theta, adj_ref_theta\n";
+
+    std::vector<Result> results; // start empty, will grow dynamically
 
     cisTEMParameterLine input_parameters;
     cisTEMParameterLine reference_parameters;
@@ -85,8 +125,14 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
     output_params.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | IMAGE_IS_ACTIVE | PSI | THETA | PHI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | OCCUPANCY | LOGP | SIGMA | SCORE | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y | ASSIGNED_SUBSET);
     output_params.PreallocateMemoryAndBlank(number_of_input_images); //in case all had occupance > threshold
 
-    long         new_counter = 0;
-    ProgressBar* my_progress = new ProgressBar(number_of_input_images);
+    cisTEMParameters output_removed_params;
+    // setup parameters for the output star file
+    output_removed_params.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | IMAGE_IS_ACTIVE | PSI | THETA | PHI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | OCCUPANCY | LOGP | SIGMA | SCORE | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y | ASSIGNED_SUBSET);
+    output_removed_params.PreallocateMemoryAndBlank(number_of_input_images); //in case all had occupance > threshold
+
+    long         new_counter           = 0;
+    long         removed_image_counter = 0;
+    ProgressBar* my_progress           = new ProgressBar(number_of_input_images);
 
     for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
 
@@ -98,6 +144,15 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
         float reference_phi        = reference_parameters.phi;
         float mirror_reference_phi = angle_within360(reference_phi + 180.0f); // wrap the angle back to within 360 in case it went out of range
         float input_psi            = input_parameters.psi;
+        float input_theta          = input_parameters.theta;
+
+        float          adj_ref_phi;
+        float          adj_ref_theta;
+        float          adj_ref_psi;
+        RotationMatrix temp_matrix;
+        temp_matrix.SetToEulerRotation(reference_parameters.phi, reference_parameters.theta, reference_parameters.psi);
+        temp_matrix.ConvertToValidEulerAngles(adj_ref_phi, adj_ref_theta, adj_ref_psi);
+        //  wxPrintf("Image %li reference phi, theta, psi are %f, %f, %f \n", image_counter + 1, reference_parameters.phi, reference_parameters.theta, reference_parameters.psi);
         // choose which reference to compare against based on psi
         // since the upweighted regions is projected in a opposite direction when psi is 270
         // float phi_to_use;
@@ -129,7 +184,6 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
                 // Only keep the images with psi around 90 or 270 (any other number will be considered misaligned or wrong particle)
                 // float input_psi = input_parameters.psi;
                 // float psi_range = 5.0;
-                // if ( (input_psi >= 90.0 - psi_range && input_psi <= 90.0 + psi_range) || (input_psi >= 270.0 - psi_range && input_psi <= 270.0 + psi_range) ) {
                 my_image.ReadSlice(&my_input_images, image_counter + 1);
                 // save the image into the new output MRC file
                 my_image.WriteSlice(&my_output_images, new_counter + 1);
@@ -174,10 +228,10 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
             }
         }
         else {
-            if ( fabs(diff) <= angular_range || fabs(mirror_diff) <= angular_range ) { // keeping what is either 0 or its opposite
+            if ( fabs(diff) <= angular_range || fabs(mirror_diff) <= angular_range ) { // keeping what is either 0 or its opposite   (  fabs(diff) || fabs(mirror_diff) <= angular_range)
                 // keeping only the input phi around 0 or 180 similar to reference phi
-                //if ( (input_phi >= reference_phi - angular_range && input_phi <= reference_phi + angular_range) ) {
-                //if ( (input_phi >= reference_phi - angular_range && input_phi <= reference_phi + angular_range) ) { //|| (input_phi >= mirror_reference_phi - angular_range && input_phi <= mirror_reference_phi + angular_range)
+                // if ( (input_phi >= reference_phi - angular_range && input_phi <= reference_phi + angular_range) ) {
+                // if ( (input_phi >= reference_phi - angular_range && input_phi <= reference_phi + angular_range) ) { //|| (input_phi >= mirror_reference_phi - angular_range && input_phi <= mirror_reference_phi + angular_range)
                 // Only keep the images with psi around 90 or 270 (any other number will be considered misaligned or wrong particle)
                 // float input_psi = input_parameters.psi;
                 // float psi_range = 5.0;
@@ -224,22 +278,88 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
 
                 new_counter++;
             }
-            // else if ( (reference_phi == 90.0 || reference_phi == 270.0) && ((input_phi >= 0.0 - angular_range && input_phi <= 0.0 + angular_range)) ) {
-            //     keep = true;
-            // }
-            // else if ( (reference_phi == 180.0) && ((input_phi >= 0.0 - angular_range && input_phi <= 0.0 + angular_range)) ) {
-            //     keep = true;
-            // }
+            else {
+                // float diff_0   = angle_difference(input_phi, 0);
+                // float diff_90  = angle_difference(input_phi, 90.0);
+                // float diff_180 = angle_difference(input_phi, 180.0);
+                // float diff_270 = angle_difference(input_phi, 270.0);
+                // if ( fabs(diff_0) <= angular_range || fabs(diff_90) <= angular_range || fabs(diff_180) <= angular_range || fabs(diff_270) <= angular_range ) {
+                float diff_90_offset = angle_difference(input_phi, reference_phi + 90.0);
 
-            // bool keep = isWithinMaskRegion(reference_phi, input_phi, 0.0f, angular_range);
+                //float diff_negative_90_offset = angle_difference(input_phi, reference_phi - 90.0);
+                float diff_270_offset = angle_difference(input_phi, reference_phi + 270.0);
+
+                if ( fabs(diff_90_offset) <= angular_range || fabs(diff_270_offset) <= angular_range ) {
+                    my_image.ReadSlice(&my_input_images, image_counter + 1);
+                    my_image.WriteSlice(&removed_images_output, removed_image_counter + 1);
+                    // calculating the angular difference
+                    float angular_difference = input_parameters.phi - reference_parameters.phi;
+                    // wxPrintf("Image %li reference phi, theta, psi are %f, %f, %f \n", image_counter + 1, reference_parameters.phi, reference_parameters.theta, reference_parameters.psi);
+
+                    results.push_back({image_counter + 1,
+                                       input_parameters.phi,
+                                       reference_parameters.phi,
+                                       angular_difference,
+                                       adj_ref_phi,
+                                       input_psi,
+                                       reference_parameters.psi,
+                                       adj_ref_psi,
+                                       input_theta,
+                                       reference_parameters.theta,
+                                       adj_ref_theta});
+
+                    output_removed_params.all_parameters[removed_image_counter].position_in_stack                  = removed_image_counter + 1;
+                    output_removed_params.all_parameters[removed_image_counter].image_is_active                    = input_parameters.image_is_active;
+                    output_removed_params.all_parameters[removed_image_counter].psi                                = input_parameters.psi;
+                    output_removed_params.all_parameters[removed_image_counter].theta                              = input_parameters.theta;
+                    output_removed_params.all_parameters[removed_image_counter].phi                                = input_parameters.phi;
+                    output_removed_params.all_parameters[removed_image_counter].x_shift                            = input_parameters.x_shift;
+                    output_removed_params.all_parameters[removed_image_counter].y_shift                            = input_parameters.y_shift;
+                    output_removed_params.all_parameters[removed_image_counter].defocus_1                          = input_parameters.defocus_1;
+                    output_removed_params.all_parameters[removed_image_counter].defocus_2                          = input_parameters.defocus_2;
+                    output_removed_params.all_parameters[removed_image_counter].defocus_angle                      = input_parameters.defocus_angle;
+                    output_removed_params.all_parameters[removed_image_counter].phase_shift                        = input_parameters.phase_shift;
+                    output_removed_params.all_parameters[removed_image_counter].occupancy                          = input_parameters.occupancy;
+                    output_removed_params.all_parameters[removed_image_counter].logp                               = input_parameters.logp;
+                    output_removed_params.all_parameters[removed_image_counter].sigma                              = input_parameters.sigma;
+                    output_removed_params.all_parameters[removed_image_counter].score                              = input_parameters.score;
+                    output_removed_params.all_parameters[removed_image_counter].score_change                       = input_parameters.score_change;
+                    output_removed_params.all_parameters[removed_image_counter].pixel_size                         = input_parameters.pixel_size;
+                    output_removed_params.all_parameters[removed_image_counter].microscope_voltage_kv              = input_parameters.microscope_voltage_kv;
+                    output_removed_params.all_parameters[removed_image_counter].microscope_spherical_aberration_mm = input_parameters.microscope_spherical_aberration_mm;
+                    output_removed_params.all_parameters[removed_image_counter].amplitude_contrast                 = input_parameters.amplitude_contrast;
+                    output_removed_params.all_parameters[removed_image_counter].beam_tilt_x                        = input_parameters.beam_tilt_x;
+                    output_removed_params.all_parameters[removed_image_counter].beam_tilt_y                        = input_parameters.beam_tilt_y;
+                    output_removed_params.all_parameters[removed_image_counter].image_shift_x                      = input_parameters.image_shift_x;
+                    output_removed_params.all_parameters[removed_image_counter].image_shift_y                      = input_parameters.image_shift_y;
+                    if ( input_parameters.position_in_stack % 2 == 1 ) {
+                        input_parameters.assigned_subset = 1; // Odd particle number
+                    }
+                    else {
+                        input_parameters.assigned_subset = 2; // Even particle number
+                    }
+                    output_removed_params.all_parameters[removed_image_counter].assigned_subset = input_parameters.assigned_subset;
+                    removed_image_counter++;
+                }
+            }
         }
 
         if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
             my_progress->Update(image_counter + 1);
     }
     delete my_progress;
+
+    removed_images_output.WriteHeader( );
     // write the output star file for the matched references
     output_params.WriteTocisTEMStarFile(output_star_filename);
+    output_removed_params.WriteTocisTEMStarFile("removed_particles_stack.star");
+
+    // Write all results
+    // adj_ref_phi, input_psi, reference_psi, adj_ref_psi, input_theta, adj_ref_thet
+    for ( const auto& r : results ) {
+        angles_file << r.image_index << ", " << r.input_phi << ", " << r.reference_phi << ", " << r.difference << ", " << r.adj_ref_phi << ", " << r.input_psi << ", " << r.ref_psi << ", " << r.adj_ref_psi << ", " << r.input_theta << ", " << r.adj_ref_theta << ", " << r.ref_theta << "\n";
+    }
+
     float percent_kept     = (float(new_counter) / float(number_of_input_images)) * 100.0f;
     float percent_filtered = ((float(number_of_input_images) - float(new_counter)) / number_of_input_images) * 100.0f;
     wxPrintf("\n\n%.3f %% (= %li particles) are kept, and %.3f %% (= %li particles) are filtered out successfully\n", percent_kept, new_counter, percent_filtered, number_of_input_images - new_counter);
