@@ -52,7 +52,7 @@ void find_tube_diameters::DoInteractiveUserInput( ) {
 #ifdef _OPENMP
     max_threads = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
 #else
-    max_threads = 1;
+    max_threads              = 1;
 #endif
 
     delete my_input;
