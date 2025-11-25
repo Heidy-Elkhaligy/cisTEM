@@ -299,7 +299,10 @@ bin_PROGRAMS =  cisTEM_job_control \
                 find_tube_diameters \
                 create_sphere_mask \
                 shift_or_rotate_images \
-                rotation_calculation
+                rotation_calculation \
+                helical_rotational_average \
+                align_classaverage_tubes \
+                extract_aligned_classaverage_images
 
 
 
@@ -1251,7 +1254,6 @@ convert_star_to_binary_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 convert_star_to_binary_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 convert_star_to_binary_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
-
 convert_binary_to_star_SOURCES  = programs/convert_binary_to_star/convert_binary_to_star.cpp
 convert_binary_to_star_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 convert_binary_to_star_CPPFLAGS = $(WX_CPPFLAGS_BASE)
@@ -1264,6 +1266,23 @@ convert_eer_to_mrc_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 convert_eer_to_mrc_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 convert_eer_to_mrc_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
+helical_rotational_average_SOURCES  = programs/helical_rotational_average/helical_rotational_average.cpp
+helical_rotational_average_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+helical_rotational_average_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+helical_rotational_average_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+helical_rotational_average_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+align_classaverage_tubes_SOURCES  = programs/align_classaverage_tubes/align_classaverage_tubes.cpp
+align_classaverage_tubes_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+align_classaverage_tubes_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+align_classaverage_tubes_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+align_classaverage_tubes_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+extract_aligned_classaverage_images_SOURCES  = programs/extract_aligned_classaverage_images/extract_aligned_classaverage_images.cpp
+extract_aligned_classaverage_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+extract_aligned_classaverage_images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+extract_aligned_classaverage_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+extract_aligned_classaverage_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 normalize_stack_SOURCES  = programs/normalize_stack/normalize_stack.cpp
 normalize_stack_CXXFLAGS = $(WX_CPPFLAGS_BASE)
