@@ -225,29 +225,33 @@ bool align_classaverage_tubes::DoCalculation( ) {
     if ( use_memory ) {
         wxPrintf("\nLoading images to memory...\n\n");
         ProgressBar* loading_progress = new ProgressBar(number_of_input_images);
-#pragma omp parallel for num_threads(max_threads) schedule(static) shared(loading_progress, my_input_images, image_stack_filtered_masked, x_dim, y_dim, outer_mask_radius, low_pass_resolution, pixel_size)
-
-        for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
+#pragma omp parallel num_threads(max_threads) shared(loading_progress, my_input_images, image_stack_filtered_masked, x_dim, y_dim, outer_mask_radius, low_pass_resolution, pixel_size)
+        {
+#pragma omp for schedule(static) ordered
+            for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
 // Read from disk
 #pragma omp critical
-            image_stack_filtered_masked[image_counter].ReadSlice(&my_input_images, image_counter + 1);
-            // Normalize the image using cisTEM Normalize
-            image_stack_filtered_masked[image_counter].Normalize( );
-            // Here the masking is important as we want to only find the rotation of the tubes around the center or near the center
-            if ( outer_mask_radius != 0 ) {
-                image_stack_filtered_masked[image_counter].CircleMask(outer_mask_radius);
-            }
-            // FT the image
-            image_stack_filtered_masked[image_counter].ForwardFFT( );
-            // convert the central pixel to zero (Is that done in real or Fouriier space??)
-            image_stack_filtered_masked[image_counter].ZeroCentralPixel( );
+                image_stack_filtered_masked[image_counter].ReadSlice(&my_input_images, image_counter + 1);
+                // Normalize the image using cisTEM Normalize
+                image_stack_filtered_masked[image_counter].Normalize( );
+                // Here the masking is important as we want to only find the rotation of the tubes around the center or near the center
+                if ( outer_mask_radius != 0 ) {
+                    image_stack_filtered_masked[image_counter].CircleMask(outer_mask_radius);
+                }
+                // FT the image
+                image_stack_filtered_masked[image_counter].ForwardFFT( );
+                // convert the central pixel to zero (Is that done in real or Fouriier space??)
+                image_stack_filtered_masked[image_counter].ZeroCentralPixel( );
 
-            // will applying a low pass filter here improve finding the correct rotation in FT
-            image_stack_filtered_masked[image_counter].GaussianLowPassFilter((pixel_size * 2) / low_pass_resolution);
+                // will applying a low pass filter here improve finding the correct rotation in FT
+                image_stack_filtered_masked[image_counter].GaussianLowPassFilter((pixel_size * 2) / low_pass_resolution);
 
-            if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
+// if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
+#pragma omp ordered
                 loading_progress->Update(image_counter + 1);
+            }
         }
+        delete loading_progress;
     }
     //////////// DEBUGGING
     // MRCFile lazy_output("rotated_images_based_on_initial_psi_after_gaussian_filter.mrc", true);
@@ -598,6 +602,7 @@ bool align_classaverage_tubes::DoCalculation( ) {
         for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
             if ( use_memory ) {
                 added_image.CopyFrom(&image_stack_filtered_masked[image_counter]); // no need for counter + 1 anymore
+                added_image.BackwardFFT( );
             }
             else {
                 added_image.ReadSlice(&my_input_images, image_counter + 1);
