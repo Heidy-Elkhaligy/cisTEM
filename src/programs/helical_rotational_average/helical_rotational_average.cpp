@@ -60,19 +60,20 @@ bool helical_rotational_average::DoCalculation( ) {
     my_volume.ReadSlices(&my_input_filename, 1, number_of_input_images);
     AverageAlongZ(&my_volume);
     AverageRotationallyPerSlice(&my_volume);
+    my_volume.ApplyRampFilter( );
     //wxPrintf("volume z dimension is %i, image z dimension is %i\n", my_volume.physical_address_of_box_center_z, my_image.physical_address_of_box_center_z);
     my_volume.WriteSlices(&my_output_filename, 1, number_of_input_images);
 
-    Image Zaverage;
-    Zaverage.Allocate(my_input_filename.ReturnXSize( ), my_input_filename.ReturnYSize( ), true);
-    Zaverage.SetToConstant(0.0);
+    // Image Zaverage;
+    // Zaverage.Allocate(my_input_filename.ReturnXSize( ), my_input_filename.ReturnYSize( ), true);
+    // Zaverage.SetToConstant(0.0);
 
-    for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
-        my_image.ReadSlice(&my_input_filename, image_counter + 1);
-        my_image.AverageRotationally( );
-        Zaverage.AddImage(&my_image);
-    }
-    Zaverage.DivideByConstant(number_of_input_images);
+    // for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
+    //     my_image.ReadSlice(&my_input_filename, image_counter + 1);
+    //     my_image.AverageRotationally( );
+    //     Zaverage.AddImage(&my_image);
+    // }
+    // Zaverage.DivideByConstant(number_of_input_images);
 
     // for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
     //     Zaverage.QuickAndDirtyWriteSlice("my_rotational_average_then_along_z_volume.mrc", image_counter + 1);
