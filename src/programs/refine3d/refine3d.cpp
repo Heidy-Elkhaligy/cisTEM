@@ -710,6 +710,7 @@ bool Refine3DApp::DoCalculation( ) {
     output_star_file.AddCommentToHeader("# Threshold input reconstruction:          " + BoolToYesNo(threshold_input_3d));
     output_star_file.AddCommentToHeader("#");
 
+    normalize_particles = false;
     if ( ! refine_particle.parameter_map.phi && ! refine_particle.parameter_map.theta && ! refine_particle.parameter_map.psi && ! refine_particle.parameter_map.x_shift && ! refine_particle.parameter_map.y_shift ) {
         local_refinement = false;
         global_search    = false;
