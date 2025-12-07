@@ -1055,6 +1055,17 @@ rotation_calculation_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 rotation_calculation_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 rotation_calculation_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 rotation_calculation_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+shift_or_rotate_images_SOURCES  = programs/shift_or_rotate_images/shift_or_rotate_images.cpp
+shift_or_rotate_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+shift_or_rotate_images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+shift_or_rotate_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+shift_or_rotate_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+rotation_calculation_SOURCES  = programs/rotation_calculation/rotation_calculation.cpp
+rotation_calculation_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+rotation_calculation_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+rotation_calculation_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+rotation_calculation_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 prepare_stack_classaverage_SOURCES  = programs/prepare_stack_classaverage/prepare_stack_classaverage.cpp
 prepare_stack_classaverage_CXXFLAGS = $(WX_CPPFLAGS_BASE)
@@ -1273,6 +1284,23 @@ convert_eer_to_mrc_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 convert_eer_to_mrc_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 convert_eer_to_mrc_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
+helical_rotational_average_SOURCES  = programs/helical_rotational_average/helical_rotational_average.cpp
+helical_rotational_average_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+helical_rotational_average_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+helical_rotational_average_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+helical_rotational_average_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+align_classaverage_tubes_SOURCES  = programs/align_classaverage_tubes/align_classaverage_tubes.cpp
+align_classaverage_tubes_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+align_classaverage_tubes_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+align_classaverage_tubes_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+align_classaverage_tubes_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+extract_aligned_classaverage_images_SOURCES  = programs/extract_aligned_classaverage_images/extract_aligned_classaverage_images.cpp
+extract_aligned_classaverage_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+extract_aligned_classaverage_images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+extract_aligned_classaverage_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+extract_aligned_classaverage_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 helical_rotational_average_SOURCES  = programs/helical_rotational_average/helical_rotational_average.cpp
 helical_rotational_average_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 helical_rotational_average_CPPFLAGS = $(WX_CPPFLAGS_BASE)
