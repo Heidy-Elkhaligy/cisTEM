@@ -16,7 +16,7 @@ void create_average_power_spectrum::DoInteractiveUserInput( ) {
     wxString input_images;
     wxString output_power_spectrum;
     float    pixel_size;
-    float    padding_factor;
+    float    padding_factor = 1.0;
     bool     crop;
     int      max_threads;
 
@@ -24,7 +24,7 @@ void create_average_power_spectrum::DoInteractiveUserInput( ) {
     input_images          = my_input->GetFilenameFromUser("Input images file name", "Filen name of helical tube stack aligned vertically", "helical_stack.mrc", true);
     output_power_spectrum = my_input->GetFilenameFromUser("Output average power spectrum file name", "The power spectrum of the tube images file name", "helical_stack_ps.mrc", false);
     pixel_size            = my_input->GetFloatFromUser("Pixel size of images (A)", "Pixel size of input images in Angstroms", "1.0", 0.0);
-    padding_factor        = my_input->GetFloatFromUser("Padding factor", "Factor value to be used for padding the input images", "0.0", 0.0);
+    padding_factor        = my_input->GetFloatFromUser("Padding factor", "Factor value to be used for padding the input images", "0.0", 1.0);
     crop                  = my_input->GetYesNoFromUser("Crop the average power spectrum to the original image size?", "Crop the average power spectrum to the original image size or keep it padded", "No");
 #ifdef _OPENMP
     max_threads = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
