@@ -1002,6 +1002,13 @@ void AbInitioManager::BeginRefinementCycle( ) {
         number_of_classes   = 1;
     }
 
+    // Maybe later this would be user defined?
+    float theta_start_local = 80.0f;
+    float theta_max_local   = 100.0f;
+
+    // to choose random psi either 90 or 270
+    std::mt19937                    gen(std::random_device{ }( )); // seed inline
+    std::uniform_int_distribution<> dist(0, 1);
     // re-randomise the input parameters, and set the default resolution statistics..
 
     for ( class_counter = 0; class_counter < number_of_classes; class_counter++ ) {
@@ -1013,9 +1020,11 @@ void AbInitioManager::BeginRefinementCycle( ) {
 
             /* for a scheme that does not put more views at the top - use :-
 			*/
-            input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].phi   = global_random_number_generator.GetUniformRandom( ) * 180.0;
-            input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = rad_2_deg(acosf(2.0f * fabsf(global_random_number_generator.GetUniformRandom( )) - 1.0f));
-            input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].psi   = global_random_number_generator.GetUniformRandom( ) * 180.0;
+            input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].phi = global_random_number_generator.GetUniformRandom( ) * 180.0;
+            // input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = rad_2_deg(acosf(2.0f * fabsf(global_random_number_generator.GetUniformRandom( )) - 1.0f));
+            input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = theta_start_local + (fabsf(global_random_number_generator.GetUniformRandom( )) * (theta_max_local - theta_start_local));
+            // input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].psi   = global_random_number_generator.GetUniformRandom( ) * 180.0;
+            input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].psi = dist(gen) ? 270 : 90;
 
             //input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].phi = global_random_number_generator.GetUniformRandom() * 180.0;
             //input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = global_random_number_generator.GetUniformRandom() * 180.0;
