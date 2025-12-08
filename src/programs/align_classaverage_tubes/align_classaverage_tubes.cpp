@@ -900,7 +900,7 @@ bool align_classaverage_tubes::DoCalculation( ) {
             else {
                 final_image.Rotate2DInPlace(tube_rotation[image_counter] + 90.0, FLT_MAX);
             }
-            final_image.PhaseShift(x_shift_column[image_counter], 0);
+            //final_image.PhaseShift(x_shift_column[image_counter], 0);
         }
         else {
             final_image.Rotate2DInPlace(best_psi_value[image_counter], FLT_MAX);
