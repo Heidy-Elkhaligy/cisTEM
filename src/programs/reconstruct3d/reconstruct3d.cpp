@@ -390,8 +390,8 @@ bool Reconstruct3DApp::DoCalculation( ) {
 
     //	beam_tilt_x /= 1000.0f;
     //	beam_tilt_y /= 1000.0f;
-
-    original_box_size = input_stack.ReturnXSize( );
+    normalize_particles = false;
+    original_box_size   = input_stack.ReturnXSize( );
     // If resolution limit higher that Nyquist, do not do binning
     if ( resolution_limit_rec < 2.0 * pixel_size )
         resolution_limit_rec = 0.0;
