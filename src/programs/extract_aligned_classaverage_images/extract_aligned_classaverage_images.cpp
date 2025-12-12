@@ -27,7 +27,7 @@ void extract_aligned_classaverage_images::DoInteractiveUserInput( ) {
     UserInput* my_input = new UserInput("extract_aligned_classaverage_images", 1.00);
 
     std::string database_filename       = my_input->GetFilenameFromUser("Database filename that contains relevant classification", "cisTEM .db file containing the class average that should be extracted and aligned", "input_database.db", true);
-    int         classification_id       = my_input->GetIntFromUser("Input the classification ID that contains the class average for extraction and alignment", "Classification ID of class average run being used for extraction and alignment", "1");
+    int         classification_id       = my_input->GetIntFromUser("Input the classification ID that contains the class average for extraction and alignment", "Classification ID of class average run being used for extraction and alignment", "0");
     int         class_number            = my_input->GetIntFromUser("Input class that will be extracted and aligned", "Class ID of the class average that will be extracted and aligned", "1");
     std::string particle_stack_filename = my_input->GetFilenameFromUser("Input particle stack", "The filename for the relevant .mrc file", "input.mrc", true);
     std::string output_filename         = my_input->GetFilenameFromUser("Output filename of the extracted aligned particles", "Filename to save the output aligned images of the given class.", "extracted_aligned_class_images.mrc", false);
@@ -101,11 +101,17 @@ bool extract_aligned_classaverage_images::DoCalculation( ) {
         // float psi     = needed_class->classification_results[class_member_id].psi;
         // float x_shift = needed_class->classification_results[class_member_id].xshift;
         // float y_shift = needed_class->classification_results[class_member_id].yshift;
-        // wxPrintf("Image %li rotation xshift and yshift are %f, %f, %f \n", image_counter, -psi, -x_shift, -y_shift);
+        wxPrintf("  Member Index %li -> Particle ID: %li\n", image_counter, input_class_members[image_counter]);
+        wxPrintf("Image %li rotation xshift and yshift are %f, %f, %f \n", image_counter, -psi, -x_shift, -y_shift);
+        // trying rotating by psi not -psi to align particles correctly
         class_image.Rotate2DInPlace(-psi, FLT_MAX);
-        class_image.PhaseShift(x_shift, 0.0);
+        class_image.QuickAndDirtyWriteSlice("rotated_unaligned_images.mrc", image_counter + 1);
+        class_image.PhaseShift(x_shift, y_shift);
         class_image.WriteSlice(&my_output_filename, image_counter + 1);
         my_progress->Update(image_counter + 1);
     }
+    wxPrintf("  Particle ID: 1 has the following classification results if 0 idx %f, %f, %f \n", needed_class->classification_results[0].psi, needed_class->classification_results[0].xshift, needed_class->classification_results[0].yshift);
+    wxPrintf("  Particle ID: 1 has the following classification results if 1 idx %f, %f, %f \n", needed_class->classification_results[1].psi, needed_class->classification_results[1].xshift, needed_class->classification_results[1].yshift);
+
     return true;
 }
