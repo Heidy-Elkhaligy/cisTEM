@@ -1,394 +1,918 @@
-#include "../../core/core_headers.h"
-#include <iostream>
-#include <fstream>
+#include <wx/defs.h>
+#include <wx/utils.h>
+#include "../../core/gui_core_headers.h"
+#include <wx/filedlg.h>
+#include <wx/msgdlg.h>
+#include <wx/menu.h>
+#include <wx/sizer.h>
+#include <wx/statusbr.h>
+#include <wx/dcbuffer.h>
+#include <wx/spinctrl.h>
+#include <wx/textctrl.h>
+#include <wx/stattext.h>
+#include <wx/checkbox.h>
+#include <wx/progdlg.h>
 #include <vector>
-#include <utility>
-#include <limits>
 #include <cmath>
+#include <cfloat>
 #include <algorithm>
-#include <iomanip> // for std::fixed and std::setprecision
+#include <ctime>
+#include <cstdlib>
+#include <limits>
+#include <map>
 
-class
-        find_tube_diameters : public MyApp {
-
+// ----------------------------------------------------------------------------
+// Application Class
+// ----------------------------------------------------------------------------
+class FindTubeDiametersGuiApp : public wxApp {
   public:
-    bool DoCalculation( );
-    void DoInteractiveUserInput( );
-
-  private:
+    virtual bool OnInit( );
 };
 
-std::vector<float>  sum_image_columns(Image* current_image);
-void                save_all_columns_sum_to_file(const std::vector<std::vector<float>>& all_columns_sum, const std::string& filename);
-std::pair<int, int> findOuterTubeEdges(const std::vector<float>& cols, float min_tube_diameter, float max_tube_diameter);
+IMPLEMENT_APP(FindTubeDiametersGuiApp)
 
-IMPLEMENT_APP(find_tube_diameters)
+// ----------------------------------------------------------------------------
+// Image Panel Class
+// ----------------------------------------------------------------------------
+class ImagePanel : public wxPanel {
+    wxImage m_image;
+    bool    m_has_image;
 
-// override the DoInteractiveUserInput
+    std::vector<float>      m_profile;
+    std::pair<float, float> m_edges;
+    bool                    m_has_graph;
+    bool                    m_show_graph;
 
-void find_tube_diameters::DoInteractiveUserInput( ) {
-    wxString input_images;
-    float    pixel_size;
-    float    min_tube_diameter = 0.0;
-    float    max_tube_diameter;
-    float    outer_mask_radius   = 0;
-    float    low_pass_resolution = 50.0;
+  public:
+    ImagePanel(wxWindow* parent) : wxPanel(parent), m_has_image(false), m_has_graph(false), m_show_graph(true), m_edges({-1.0f, -1.0f}) {
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+    }
 
-    wxString output_peaks_filename;
-    wxString output_diameters_filename;
+    void SetImage(Image* image) {
+        if ( ! image || image->logical_x_dimension == 0 )
+            return;
 
-    int max_threads;
+        int w = image->logical_x_dimension;
+        int h = image->logical_y_dimension;
 
-    UserInput* my_input       = new UserInput("Find Tube Diameters", 1.00);
-    input_images              = my_input->GetFilenameFromUser("Input images file name", "Filename of helical tube stack", "helical_stack.mrc", true);
-    pixel_size                = my_input->GetFloatFromUser("Pixel size of images (A)", "Pixel size of input images in Angstroms", "1.0", 0.0);
-    min_tube_diameter         = my_input->GetFloatFromUser("Minimum tube diameter in pixels", "The expected minimum tube diameter, anything below that diameter will be discarded", "0.0", 0.0);
-    max_tube_diameter         = my_input->GetFloatFromUser("Maximum tube diameter in pixels", "The expected maximum tube diameter, anything above that diameter will be discarded", "512.0", 0.0);
-    outer_mask_radius         = my_input->GetFloatFromUser("Outer mask radius for masking the images during tube alignment (pixels)", "Outer mask radius to use when searching and aligning tubes in pixels, zero mean no masking should be applied", "0", 0);
-    low_pass_resolution       = my_input->GetFloatFromUser("Resolution limit for low pass filtering", "Resolution limit for low pass filter. Only this resolution or worse information will be retained", "50.0", 0.0);
-    output_peaks_filename     = my_input->GetFilenameFromUser("Output peaks file name", "Filename of the peaks ", "peaks_output.txt", false);
-    output_diameters_filename = my_input->GetFilenameFromUser("Output diameters file name", "Filename of the saved diameters ", "diameters_output.txt", false);
+        float min_val = FLT_MAX;
+        float max_val = -FLT_MAX;
 
-#ifdef _OPENMP
-    max_threads = my_input->GetIntFromUser("Max. threads to use for calculation", "when threading, what is the max threads to run", "1", 1);
-#else
-    max_threads              = 1;
-#endif
+        for ( int y = 0; y < h; y++ ) {
+            for ( int x = 0; x < w; x++ ) {
+                float val = image->real_values[image->ReturnReal1DAddressFromPhysicalCoord(x, y, 0)];
+                if ( val < min_val )
+                    min_val = val;
+                if ( val > max_val )
+                    max_val = val;
+            }
+        }
 
-    delete my_input;
+        float range = max_val - min_val;
+        if ( range <= 0 )
+            range = 1.0f;
 
-    my_current_job.Reset(10);
-    my_current_job.ManualSetArguments("tffffftti", input_images.ToUTF8( ).data( ),
-                                      pixel_size,
-                                      min_tube_diameter,
-                                      max_tube_diameter,
-                                      outer_mask_radius,
-                                      low_pass_resolution,
-                                      output_peaks_filename.ToUTF8( ).data( ),
-                                      output_diameters_filename.ToUTF8( ).data( ),
-                                      max_threads); //update_star_file, input_star_filename.ToUTF8( ).data( ),
+        unsigned char* rgb_data = (unsigned char*)malloc(w * h * 3);
+        unsigned char* ptr      = rgb_data;
+
+        for ( int y = 0; y < h; y++ ) {
+            for ( int x = 0; x < w; x++ ) {
+                float         val       = image->real_values[image->ReturnReal1DAddressFromPhysicalCoord(x, y, 0)];
+                unsigned char pixel_val = (unsigned char)((val - min_val) / range * 255.0f);
+                *ptr++                  = pixel_val;
+                *ptr++                  = pixel_val;
+                *ptr++                  = pixel_val;
+            }
+        }
+
+        m_image     = wxImage(w, h, rgb_data);
+        m_has_image = true;
+        Refresh( );
+    }
+
+    void SetGraphData(const std::vector<float>& profile, std::pair<float, float> edges) {
+        m_profile   = profile;
+        m_edges     = edges;
+        m_has_graph = true;
+        Refresh( );
+    }
+
+    void ShowGraph(bool show) {
+        m_show_graph = show;
+        Refresh( );
+    }
+
+    void OnPaint(wxPaintEvent& evt) {
+        wxAutoBufferedPaintDC dc(this);
+        dc.Clear( );
+
+        if ( m_has_image && m_image.IsOk( ) ) {
+            wxSize sz = GetClientSize( );
+            if ( sz.GetWidth( ) <= 0 || sz.GetHeight( ) <= 0 )
+                return;
+
+            // Reserve space at bottom for X-Axis labels (30 pixels)
+            int axis_height = 30;
+            int available_h = sz.GetHeight( ) - axis_height;
+            if ( available_h < 0 )
+                available_h = sz.GetHeight( ); // Fallback if too small
+
+            float img_aspect   = (float)m_image.GetWidth( ) / m_image.GetHeight( );
+            float panel_aspect = (float)sz.GetWidth( ) / available_h;
+
+            int draw_w, draw_h;
+
+            if ( panel_aspect > img_aspect ) {
+                draw_h = available_h;
+                draw_w = (int)(draw_h * img_aspect);
+            }
+            else {
+                draw_w = sz.GetWidth( );
+                draw_h = (int)(draw_w / img_aspect);
+            }
+
+            int x_off = (sz.GetWidth( ) - draw_w) / 2;
+            int y_off = (available_h - draw_h) / 2;
+
+            wxBitmap bmp(m_image.Scale(draw_w, draw_h, wxIMAGE_QUALITY_NORMAL));
+            dc.DrawBitmap(bmp, x_off, y_off);
+
+            // --- DRAW X-AXIS RULER ---
+            dc.SetPen(*wxBLACK_PEN);
+            dc.SetFont(wxFont(8, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+
+            int axis_y = y_off + draw_h + 2;
+            dc.DrawLine(x_off, axis_y, x_off + draw_w, axis_y);
+
+            int img_w         = m_image.GetWidth( );
+            int tick_interval = 50;
+            if ( img_w > 1000 )
+                tick_interval = 100;
+            if ( img_w < 100 )
+                tick_interval = 10;
+
+            float scale_x = (float)draw_w / img_w;
+
+            for ( int i = 0; i < img_w; i += tick_interval ) {
+                int screen_x = x_off + (int)(i * scale_x);
+                dc.DrawLine(screen_x, axis_y, screen_x, axis_y + 5);
+
+                wxSize text_sz = dc.GetTextExtent(wxString::Format("%d", i));
+                dc.DrawText(wxString::Format("%d", i), screen_x - (text_sz.GetWidth( ) / 2), axis_y + 6);
+            }
+            // -------------------------
+
+            if ( m_show_graph && m_has_graph && ! m_profile.empty( ) ) {
+                float p_min   = *std::min_element(m_profile.begin( ), m_profile.end( ));
+                float p_max   = *std::max_element(m_profile.begin( ), m_profile.end( ));
+                float p_range = p_max - p_min;
+                if ( p_range <= 0 )
+                    p_range = 1.0f;
+
+                float plot_h     = draw_h * 0.8f;
+                float plot_off_y = draw_h * 0.1f;
+
+                dc.SetPen(wxPen(*wxCYAN, 2));
+
+                for ( size_t i = 0; i < m_profile.size( ) - 1; ++i ) {
+                    float y1 = (1.0f - (m_profile[i] - p_min) / p_range) * plot_h + plot_off_y;
+                    float y2 = (1.0f - (m_profile[i + 1] - p_min) / p_range) * plot_h + plot_off_y;
+
+                    int x1_draw = x_off + (int)(i * scale_x);
+                    int x2_draw = x_off + (int)((i + 1) * scale_x);
+                    int y1_draw = y_off + (int)y1;
+                    int y2_draw = y_off + (int)y2;
+
+                    dc.DrawLine(x1_draw, y1_draw, x2_draw, y2_draw);
+                }
+
+                if ( m_edges.first != -1 && m_edges.second != -1 ) {
+                    dc.SetPen(wxPen(*wxRED, 2, wxPENSTYLE_DOT));
+                    int x_edge1 = x_off + (int)(m_edges.first * scale_x);
+                    int x_edge2 = x_off + (int)(m_edges.second * scale_x);
+                    dc.DrawLine(x_edge1, y_off, x_edge1, y_off + draw_h);
+                    dc.DrawLine(x_edge2, y_off, x_edge2, y_off + draw_h);
+                }
+            }
+        }
+    }
+
+    void OnSize(wxSizeEvent& evt) {
+        Refresh( );
+        evt.Skip( );
+    }
+
+    wxDECLARE_EVENT_TABLE( );
+};
+
+wxBEGIN_EVENT_TABLE(ImagePanel, wxPanel)
+        EVT_PAINT(ImagePanel::OnPaint)
+                EVT_SIZE(ImagePanel::OnSize)
+                        wxEND_EVENT_TABLE( )
+
+        // ----------------------------------------------------------------------------
+        // Main Frame Class
+        // ----------------------------------------------------------------------------
+        class FindTubeMainFrame : public wxFrame {
+  public:
+    FindTubeMainFrame(const wxString& title, const wxPoint& pos, const wxSize& size);
+
+    // Event Handlers
+    void OnOpen(wxCommandEvent& event);
+    void OnExit(wxCommandEvent& event);
+    void OnParamChange(wxCommandEvent& event);
+    void OnNext(wxCommandEvent& event);
+    void OnPrev(wxCommandEvent& event);
+    void OnRandom(wxCommandEvent& event);
+    void OnToggleGraph(wxCommandEvent& event);
+    void OnShowHistogram(wxCommandEvent& event);
+
+    // Logic
+    void                    LoadCurrentSlice( );
+    void                    CalculateAndDisplay( );
+    std::pair<float, float> FindOuterTubeEdges(const std::vector<float>& cols, float min_tube_diameter, float max_tube_diameter, bool use_half_way);
+    void                    AlignImage(Image& image);
+    float                   GetMaxAbsColumnSum(Image* img);
+
+    std::vector<std::pair<int, float>> FindPeaks(const std::vector<float>& data, float min_dist, float threshold);
+
+    // UI Elements
+    wxTextCtrl* m_pixel_size_ctrl;
+    wxTextCtrl* m_min_diam_ctrl;
+    wxTextCtrl* m_max_diam_ctrl;
+    wxTextCtrl* m_mask_rad_ctrl;
+    wxTextCtrl* m_lp_res_ctrl;
+    wxCheckBox* m_show_graph_check;
+    wxCheckBox* m_align_check;
+    wxCheckBox* m_half_way_check;
+
+    wxStaticText* m_result_text;
+    wxStaticText* m_slice_info;
+    wxButton*     m_btn_next;
+    wxButton*     m_btn_prev;
+    wxButton*     m_btn_random;
+    wxButton*     m_btn_hist;
+
+    ImagePanel* m_image_panel;
+    // PlotCurvePanel* m_hist_panel; // Not stored as member to avoid state issues
+
+    // Data
+    wxString m_current_filename;
+    bool     m_image_loaded;
+    int      m_current_slice;
+    int      m_total_slices;
+
+    wxDECLARE_EVENT_TABLE( );
+};
+
+enum {
+    ID_Open      = 1,
+    ID_Calc      = 2,
+    ID_Next      = 3,
+    ID_Prev      = 4,
+    ID_Random    = 5,
+    ID_ShowGraph = 6,
+    ID_Align     = 7,
+    ID_Hist      = 8,
+    ID_HalfWay   = 9
+};
+
+wxBEGIN_EVENT_TABLE(FindTubeMainFrame, wxFrame)
+        EVT_MENU(ID_Open, FindTubeMainFrame::OnOpen)
+                EVT_MENU(wxID_EXIT, FindTubeMainFrame::OnExit)
+                        EVT_TEXT_ENTER(wxID_ANY, FindTubeMainFrame::OnParamChange)
+                                EVT_BUTTON(ID_Next, FindTubeMainFrame::OnNext)
+                                        EVT_BUTTON(ID_Prev, FindTubeMainFrame::OnPrev)
+                                                EVT_BUTTON(ID_Random, FindTubeMainFrame::OnRandom)
+                                                        EVT_CHECKBOX(ID_ShowGraph, FindTubeMainFrame::OnToggleGraph)
+                                                                EVT_CHECKBOX(ID_Align, FindTubeMainFrame::OnParamChange)
+                                                                        EVT_CHECKBOX(ID_HalfWay, FindTubeMainFrame::OnParamChange)
+                                                                                EVT_BUTTON(ID_Hist, FindTubeMainFrame::OnShowHistogram)
+                                                                                        wxEND_EVENT_TABLE( )
+
+                                                                                                FindTubeMainFrame::FindTubeMainFrame(const wxString& title, const wxPoint& pos, const wxSize& size)
+    : wxFrame(NULL, wxID_ANY, title, pos, size), m_image_loaded(false), m_current_slice(1), m_total_slices(0) {
+
+    wxMenu* menuFile = new wxMenu;
+    menuFile->Append(ID_Open, "&Open Image...\tCtrl-O");
+    menuFile->AppendSeparator( );
+    menuFile->Append(wxID_EXIT);
+    wxMenuBar* menuBar = new wxMenuBar;
+    menuBar->Append(menuFile, "&File");
+    SetMenuBar(menuBar);
+
+    wxPanel*    topPanel = new wxPanel(this);
+    wxBoxSizer* topSizer = new wxBoxSizer(wxVERTICAL);
+
+    wxBoxSizer* paramSizer = new wxBoxSizer(wxHORIZONTAL);
+    auto        AddControl = [&](const wxString& label, wxTextCtrl*& ctrl, const wxString& defVal) {
+        paramSizer->Add(new wxStaticText(topPanel, wxID_ANY, label), 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 10);
+        ctrl = new wxTextCtrl(topPanel, wxID_ANY, defVal, wxDefaultPosition, wxSize(60, -1), wxTE_PROCESS_ENTER);
+        paramSizer->Add(ctrl, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 5);
+    };
+
+    AddControl("Pixel Size (A):", m_pixel_size_ctrl, "1.0");
+    AddControl("Min Diam (Pix):", m_min_diam_ctrl, "100.0");
+    AddControl("Max Diam (Pix):", m_max_diam_ctrl, "300.0");
+    AddControl("Mask Rad (A):", m_mask_rad_ctrl, "0.0");
+    AddControl("Low Pass (A):", m_lp_res_ctrl, "50.0");
+
+    m_show_graph_check = new wxCheckBox(topPanel, ID_ShowGraph, "Show Graph");
+    m_show_graph_check->SetValue(true);
+    paramSizer->Add(m_show_graph_check, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 15);
+
+    m_align_check = new wxCheckBox(topPanel, ID_Align, "Align Images");
+    m_align_check->SetValue(false);
+    paramSizer->Add(m_align_check, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 15);
+
+    m_half_way_check = new wxCheckBox(topPanel, ID_HalfWay, "Half-Way Peaks");
+    m_half_way_check->SetValue(false);
+    paramSizer->Add(m_half_way_check, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 15);
+
+    wxButton* btnUpdate = new wxButton(topPanel, ID_Calc, "Update");
+    btnUpdate->Bind(wxEVT_BUTTON, &FindTubeMainFrame::OnParamChange, this);
+    paramSizer->Add(btnUpdate, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, 10);
+
+    m_btn_hist = new wxButton(topPanel, ID_Hist, "Show Histogram");
+    m_btn_hist->Enable(false);
+    paramSizer->Add(m_btn_hist, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 10);
+
+    wxBoxSizer* navSizer = new wxBoxSizer(wxHORIZONTAL);
+    m_slice_info         = new wxStaticText(topPanel, wxID_ANY, "Image: N/A");
+    navSizer->Add(m_slice_info, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 10);
+
+    navSizer->AddStretchSpacer(1);
+
+    m_btn_prev = new wxButton(topPanel, ID_Prev, "Prev Image");
+    m_btn_prev->Enable(false);
+    navSizer->Add(m_btn_prev, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 10);
+
+    m_btn_next = new wxButton(topPanel, ID_Next, "Next Image");
+    m_btn_next->Enable(false);
+    navSizer->Add(m_btn_next, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 10);
+
+    m_btn_random = new wxButton(topPanel, ID_Random, "Random Image");
+    m_btn_random->Enable(false);
+    navSizer->Add(m_btn_random, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, 10);
+
+    topSizer->Add(paramSizer, 0, wxEXPAND | wxALL, 5);
+    topSizer->Add(navSizer, 0, wxEXPAND | wxBOTTOM, 5);
+
+    topPanel->SetSizer(topSizer);
+
+    m_image_panel = new ImagePanel(this);
+
+    m_result_text = new wxStaticText(this, wxID_ANY, "Tube Diameter: N/A");
+    wxFont font   = m_result_text->GetFont( );
+    font.SetWeight(wxFONTWEIGHT_BOLD);
+    font.SetPointSize(12);
+    m_result_text->SetFont(font);
+
+    wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
+    mainSizer->Add(topPanel, 0, wxEXPAND | wxALL, 5);
+    mainSizer->Add(m_image_panel, 1, wxEXPAND | wxALL, 5);
+    mainSizer->Add(m_result_text, 0, wxALIGN_CENTER | wxALL, 10);
+
+    SetSizer(mainSizer);
+    Layout( );
+    CreateStatusBar( );
+
+    srand(time(NULL));
 }
 
-// override the do calculation method which will be what is actually run..
+void FindTubeMainFrame::OnOpen(wxCommandEvent& event) {
+    wxFileDialog openFileDialog(this, "Open MRC file", "", "", "MRC files (*.mrc)|*.mrc", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if ( openFileDialog.ShowModal( ) == wxID_CANCEL )
+        return;
 
-bool find_tube_diameters::DoCalculation( ) {
-    wxString input_images              = my_current_job.arguments[0].ReturnStringArgument( );
-    float    pixel_size                = my_current_job.arguments[1].ReturnFloatArgument( );
-    float    min_tube_diameter         = my_current_job.arguments[2].ReturnFloatArgument( );
-    float    max_tube_diameter         = my_current_job.arguments[3].ReturnFloatArgument( );
-    float    outer_mask_radius         = my_current_job.arguments[4].ReturnFloatArgument( );
-    float    low_pass_resolution       = my_current_job.arguments[5].ReturnFloatArgument( );
-    wxString output_peaks_filename     = my_current_job.arguments[6].ReturnStringArgument( );
-    wxString output_diameters_filename = my_current_job.arguments[7].ReturnStringArgument( );
-    int      max_threads               = my_current_job.arguments[8].ReturnIntegerArgument( );
+    m_current_filename = openFileDialog.GetPath( );
 
-    MRCFile            my_input_images(input_images.ToStdString( ), false);
-    long               number_of_input_images = my_input_images.ReturnNumberOfSlices( );
-    std::vector<float> x_shift_column(number_of_input_images, 0.0f);
-    Image              current_image;
-    int                x_dim;
-    int                y_dim;
-    current_image.ReadSlice(&my_input_images, 1);
-    float center_peak_index = current_image.logical_y_dimension / 2;
-    x_dim                   = current_image.logical_x_dimension;
-    y_dim                   = current_image.logical_y_dimension;
+    MRCFile input_file(m_current_filename.ToStdString( ), false);
+    m_total_slices = input_file.ReturnNumberOfSlices( );
 
-    std::vector<std::vector<float>> all_columns_sum(number_of_input_images, std::vector<float>(x_dim, 0.0)); // why I am saving those values?????
-    std::vector<float>              all_diameters(number_of_input_images, 0.0f);
+    if ( m_total_slices == 0 )
+        return;
 
-    // Open the diameter file in write mode
-    std::ofstream file(output_diameters_filename.ToStdString( ));
-    if ( ! file.is_open( ) ) {
-        std::cerr << "Error: Could not open diameters_output.txt\n";
-        //return;
-    }
+    float ps = input_file.ReturnPixelSize( );
+    if ( ps > 0 )
+        m_pixel_size_ctrl->SetValue(wxString::Format("%.2f", ps));
 
-    file << std::fixed << std::setprecision(2); // Optional: set float precision
-    file << "image_index, diameter\n";
+    m_current_slice = 1;
+    m_image_loaded  = true;
+    m_btn_prev->Enable(true);
+    m_btn_next->Enable(true);
+    m_btn_random->Enable(true);
+    m_btn_hist->Enable(true);
 
-    std::ofstream peak_file(output_peaks_filename.ToStdString( )); // Open file once
-
-    if ( ! peak_file.is_open( ) ) {
-        std::cerr << "Error: Could not open peaks_output.txt\n";
-        //return;
-    }
-
-    peak_file << std::fixed << std::setprecision(2); // Optional: set float precision
-    peak_file << "image_index, peak_one_value, peak_two_value\n";
-
-    std::vector<std::pair<int, std::pair<int, int>>> results(number_of_input_images);
-
-    MRCFile my_output("current_image.mrc", true);
-    if ( ! my_output.IsOpen( ) ) {
-        my_output.OpenFile("current_image.mrc", true);
-        if ( ! my_output.IsOpen( ) ) {
-            wxPrintf("ERROR: Could not open '%s' for writing\n", "current_image.mrc");
-            DEBUG_ABORT;
-        }
-    }
-    my_output.my_header.SetNumberOfImages(number_of_input_images);
-    my_output.my_header.SetDimensionsImage(x_dim, y_dim);
-    my_output.SetPixelSize(pixel_size);
-    my_output.WriteHeader( );
-    my_output.rewrite_header_on_close = true;
-
-    ProgressBar* my_progress = new ProgressBar(number_of_input_images);
-
-#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(my_input_images, number_of_input_images, low_pass_resolution, max_threads, x_dim, y_dim, all_diameters, results, min_tube_diameter, max_tube_diameter, \
-                                                                                            pixel_size, my_progress, outer_mask_radius, min_tube_diameter, center_peak_index, x_shift_column, all_columns_sum, peak_file, my_output) private(current_image)
-
-    for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
-        // wxPrintf("Image number is %li\n\n", image_counter + 1);
-        current_image.Allocate(x_dim, y_dim, true);
-        current_image.SetToConstant(0.0);
-#pragma omp critical
-        current_image.ReadSlice(&my_input_images, image_counter + 1);
-        current_image.Normalize( );
-        if ( outer_mask_radius != 0 ) {
-            current_image.CircleMask(outer_mask_radius);
-        }
-#pragma omp critical
-        current_image.WriteSlice(&my_output, image_counter + 1);
-        current_image.ForwardFFT( );
-        current_image.ZeroCentralPixel( );
-        current_image.GaussianLowPassFilter((pixel_size * 2) / low_pass_resolution);
-        current_image.BackwardFFT( );
-
-#pragma omp critical
-        all_columns_sum[image_counter] = sum_image_columns(&current_image);
-
-        // wxPrintf("Column values for image %li are ", image_counter);
-        // for ( auto val : all_columns_sum[image_counter] ) {
-        //     wxPrintf("%f, ", val);
-        // }
-        // wxPrintf("\n\n");
-        // find the outer edges of the protein or tube
-        auto [peak_one_column_sum, peak_two_column_sum] = findOuterTubeEdges(all_columns_sum[image_counter], min_tube_diameter, max_tube_diameter);
-
-        results[image_counter] = {image_counter, {peak_one_column_sum, peak_two_column_sum}};
-
-        float tube_diameter          = std::abs((peak_one_column_sum - peak_two_column_sum));
-        all_diameters[image_counter] = tube_diameter;
-        current_image.Deallocate( );
-
-        if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
-
-            my_progress->Update(image_counter + 1);
-    }
-    delete my_progress;
-
-    //save the peaks to the output file
-    if ( peak_file.is_open( ) ) {
-        for ( auto& r : results ) {
-            peak_file << r.first << ", " << r.second.first << ", " << r.second.second << "\n";
-        }
-        peak_file.close( );
-    }
-
-    // Check if the all diameters file is open
-    if ( file.is_open( ) ) {
-        for ( size_t i = 0; i < all_diameters.size( ); ++i ) {
-            file << i << ", " << all_diameters[i] << '\n';
-        }
-        file.close( );
-    }
-    // save column sum output file
-    // save_all_columns_sum_to_file(all_columns_sum, "column_sums_output.txt");
-
-    return true;
+    CalculateAndDisplay( );
 }
 
-std::vector<float> sum_image_columns(Image* current_image) {
-    std::vector<float> column_sum(current_image->logical_x_dimension, 0.0);
-
-    long pixel_counter = 0;
-
-    for ( int i = 0; i < current_image->logical_x_dimension; i++ ) {
-        for ( int j = 0; j < current_image->logical_y_dimension; j++ ) {
-            long pixel_coord_xy = current_image->ReturnReal1DAddressFromPhysicalCoord(i, j, 0);
-            column_sum[i] += current_image->real_values[pixel_coord_xy];
-            pixel_counter++;
-        }
-        pixel_counter += current_image->padding_jump_value;
-    }
-
-    return column_sum;
+void FindTubeMainFrame::LoadCurrentSlice( ) {
+    if ( ! m_image_loaded )
+        return;
+    m_slice_info->SetLabel(wxString::Format("Image: %d / %d", m_current_slice, m_total_slices));
 }
 
-void save_all_columns_sum_to_file(const std::vector<std::vector<float>>& all_columns_sum, const std::string& filename) {
-    std::ofstream out_file(filename);
-    if ( ! out_file.is_open( ) ) {
-        std::cerr << "Error: Could not open file " << filename << " for writing.\n";
-        //return;
-    }
-
-    out_file << std::fixed << std::setprecision(2); // Set float precision to 2 decimal places
-
-    for ( const auto& row : all_columns_sum ) {
-        for ( size_t i = 0; i < row.size( ); ++i ) {
-            out_file << row[i];
-            if ( i < row.size( ) - 1 )
-                out_file << ", ";
-        }
-        out_file << '\n';
-    }
-
-    out_file.close( );
+void FindTubeMainFrame::OnParamChange(wxCommandEvent& event) {
+    CalculateAndDisplay( );
 }
 
-// Detects the two strongest outer-edge peaks in a 1D intensity profile.
-// Returns indices of the best peak pair (sorted low->high), or an empty vector if none found.
-std::pair<int, int> findOuterTubeEdges(const std::vector<float>& cols, float min_tube_diameter, float max_tube_diameter) {
+void FindTubeMainFrame::OnNext(wxCommandEvent& event) {
+    if ( ! m_image_loaded )
+        return;
+    m_current_slice++;
+    if ( m_current_slice > m_total_slices )
+        m_current_slice = 1;
+    CalculateAndDisplay( );
+}
+
+void FindTubeMainFrame::OnPrev(wxCommandEvent& event) {
+    if ( ! m_image_loaded )
+        return;
+    m_current_slice--;
+    if ( m_current_slice < 1 )
+        m_current_slice = m_total_slices;
+    CalculateAndDisplay( );
+}
+
+void FindTubeMainFrame::OnRandom(wxCommandEvent& event) {
+    if ( ! m_image_loaded )
+        return;
+    if ( m_total_slices > 1 ) {
+        m_current_slice = (rand( ) % m_total_slices) + 1;
+    }
+    CalculateAndDisplay( );
+}
+
+void FindTubeMainFrame::OnToggleGraph(wxCommandEvent& event) {
+    if ( m_image_panel ) {
+        m_image_panel->ShowGraph(event.IsChecked( ));
+    }
+}
+
+void FindTubeMainFrame::OnShowHistogram(wxCommandEvent& event) {
+    if ( ! m_image_loaded )
+        return;
+
+    wxProgressDialog progress("Generating Histogram",
+                              "Calculating diameters for all images...",
+                              m_total_slices,
+                              this,
+                              wxPD_AUTO_HIDE | wxPD_APP_MODAL | wxPD_REMAINING_TIME);
+
+    double pixel_size   = wxAtof(m_pixel_size_ctrl->GetValue( ));
+    double lp_res       = wxAtof(m_lp_res_ctrl->GetValue( ));
+    double mask_rad_ang = wxAtof(m_mask_rad_ctrl->GetValue( ));
+    double min_diam_pix = wxAtof(m_min_diam_ctrl->GetValue( ));
+    double max_diam_pix = wxAtof(m_max_diam_ctrl->GetValue( ));
+    bool   do_align     = m_align_check->IsChecked( );
+    bool   do_halfway   = m_half_way_check->IsChecked( );
+
+    if ( pixel_size <= 0 )
+        pixel_size = 1.0;
+
+    std::vector<float> diameters_ang;
+
+    MRCFile input_file(m_current_filename.ToStdString( ), false);
+    Image   process_image;
+
+    for ( int slice = 1; slice <= m_total_slices; ++slice ) {
+        process_image.ReadSlice(&input_file, slice);
+        process_image.Normalize( );
+
+        if ( do_align )
+            AlignImage(process_image);
+
+        if ( lp_res > 0.0 ) {
+            process_image.ForwardFFT( );
+            process_image.GaussianLowPassFilter((float)((pixel_size * 2.0) / lp_res));
+            process_image.BackwardFFT( );
+        }
+
+        if ( mask_rad_ang > 0 ) {
+            float mask_rad_pix = mask_rad_ang / pixel_size;
+            int   w            = process_image.logical_x_dimension;
+            int   h            = process_image.logical_y_dimension;
+            float cx           = w / 2.0f;
+            float cy           = h / 2.0f;
+            for ( int y = 0; y < h; y++ ) {
+                for ( int x = 0; x < w; x++ ) {
+                    float dx = x - cx;
+                    float dy = y - cy;
+                    if ( sqrt(dx * dx + dy * dy) > mask_rad_pix ) {
+                        long addr                       = process_image.ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
+                        process_image.real_values[addr] = 0.0f;
+                    }
+                }
+            }
+        }
+
+        int                w = process_image.logical_x_dimension;
+        int                h = process_image.logical_y_dimension;
+        std::vector<float> profile(w, 0.0f);
+        for ( int x = 0; x < w; x++ ) {
+            double sum = 0;
+            for ( int y = 0; y < h; y++ ) {
+                long addr = process_image.ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
+                sum += process_image.real_values[addr];
+            }
+            profile[x] = (float)sum;
+        }
+
+        std::pair<float, float> edges = FindOuterTubeEdges(profile, (float)min_diam_pix, (float)max_diam_pix, do_halfway);
+
+        if ( edges.first != -1 && edges.second != -1 ) {
+            float d_pix = edges.second - edges.first;
+            diameters_ang.push_back(d_pix * pixel_size);
+        }
+
+        if ( ! progress.Update(slice) ) {
+            break;
+        }
+    }
+
+    wxDialog*       dlg  = new wxDialog(this, wxID_ANY, "Diameter Distribution", wxDefaultPosition, wxSize(600, 400), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+    PlotCurvePanel* plot = new PlotCurvePanel(dlg);
+
+    // FIXED: Moved declaration outside the if block so it persists during ShowModal
+    Curve hist_curve;
+
+    if ( ! diameters_ang.empty( ) ) {
+        float d_min = *std::min_element(diameters_ang.begin( ), diameters_ang.end( ));
+        float d_max = *std::max_element(diameters_ang.begin( ), diameters_ang.end( ));
+
+        // FIXED: Use a fixed bin width of ~2 pixels (in Angstroms)
+        float bin_width_pix = 2.0f;
+        float bin_width_ang = bin_width_pix * pixel_size;
+
+        // Handle case where range is zero (all particles identical)
+        if ( d_max == d_min )
+            d_max += bin_width_ang;
+
+        // Calculate number of bins based on the 2-pixel width
+        int bins = (int)ceil((d_max - d_min) / bin_width_ang);
+        if ( bins < 1 )
+            bins = 1;
+
+        // Add a small buffer to max to catch the edge cases
+        hist_curve.SetupXAxis(d_min, d_max + bin_width_ang, bins);
+
+        std::vector<int> counts(bins, 0);
+        for ( float val : diameters_ang ) {
+            int idx = (int)((val - d_min) / bin_width_ang);
+            if ( idx < 0 )
+                idx = 0;
+            if ( idx >= bins )
+                idx = bins - 1;
+            counts[idx]++;
+        }
+
+        for ( int i = 0; i < bins; i++ ) {
+            hist_curve.data_y[i] = counts[i];
+            // Center the bin value on X
+            hist_curve.data_x[i] = d_min + (i * bin_width_ang) + (bin_width_ang / 2.0f);
+        }
+
+        plot->Initialise("Diameter (A)", "Count", false, true);
+        plot->AddCurve(hist_curve, *wxBLUE);
+    }
+    else {
+        plot->Initialise("Diameter (A)", "Count", false, true);
+    }
+
+    wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(plot, 1, wxEXPAND | wxALL, 5);
+    dlg->SetSizer(sizer);
+    dlg->ShowModal( );
+    dlg->Destroy( );
+}
+
+void FindTubeMainFrame::OnExit(wxCommandEvent& event) {
+    Close(true);
+}
+
+std::vector<std::pair<int, float>> FindTubeMainFrame::FindPeaks(const std::vector<float>& data, float min_dist, float threshold) {
+    std::vector<std::pair<int, float>> peaks;
+    int                                n = data.size( );
+    if ( n < 3 )
+        return peaks;
+
+    for ( int i = 1; i < n - 1; ++i ) {
+        if ( data[i] > data[i - 1] && data[i] > data[i + 1] ) {
+            if ( data[i] >= threshold ) {
+                peaks.push_back({i, data[i]});
+            }
+        }
+    }
+
+    std::sort(peaks.begin( ), peaks.end( ), [](const std::pair<int, float>& a, const std::pair<int, float>& b) {
+        return a.second > b.second;
+    });
+
+    std::vector<std::pair<int, float>> filtered_peaks;
+    for ( const auto& p : peaks ) {
+        bool keep = true;
+        for ( const auto& accepted : filtered_peaks ) {
+            if ( std::abs(p.first - accepted.first) < min_dist ) {
+                keep = false;
+                break;
+            }
+        }
+        if ( keep ) {
+            filtered_peaks.push_back(p);
+        }
+    }
+
+    std::sort(filtered_peaks.begin( ), filtered_peaks.end( ), [](const std::pair<int, float>& a, const std::pair<int, float>& b) {
+        return a.first < b.first;
+    });
+
+    return filtered_peaks;
+}
+
+std::pair<float, float> FindTubeMainFrame::FindOuterTubeEdges(const std::vector<float>& cols, float min_tube_diameter, float max_tube_diameter, bool use_half_way) {
     int n = cols.size( );
     if ( n < 3 )
-        return {-1, -1}; // need at least 3 points to form a peak
+        return {-1.0f, -1.0f};
 
-    // 1) Normalize the 1D profile
-    float              minVal = *std::min_element(cols.begin( ), cols.end( ));
-    float              maxVal = *std::max_element(cols.begin( ), cols.end( ));
+    // 1. Smooth the profile
+    std::vector<float> smooth_cols   = cols;
+    int                smooth_radius = 2;
+    for ( int i = smooth_radius; i < n - smooth_radius; ++i ) {
+        double sum = 0;
+        for ( int k = -smooth_radius; k <= smooth_radius; ++k ) {
+            sum += cols[i + k];
+        }
+        smooth_cols[i] = sum / (2 * smooth_radius + 1);
+    }
+
+    // 2. Normalize
+    float              minVal = *std::min_element(smooth_cols.begin( ), smooth_cols.end( ));
     std::vector<float> norm(n);
     for ( int i = 0; i < n; ++i )
-        norm[i] = cols[i] - minVal;
+        norm[i] = smooth_cols[i] - minVal;
 
     float normMax = *std::max_element(norm.begin( ), norm.end( ));
     if ( normMax <= 0.0f )
-        return {-1, -1};
+        return {-1.0f, -1.0f};
 
-    // Inverted profile for negative peaks
+    // Inverted profile for Negative peaks
     std::vector<float> normInv(n);
     for ( int i = 0; i < n; ++i )
         normInv[i] = normMax - norm[i];
 
-    // 2) Detect peaks
-    std::vector<std::pair<int, float>> posPeaks;
-    std::vector<std::pair<int, float>> negPeaks;
+    // 3. Find All Peaks
+    float min_dist  = 5.0f; // Minimum distance between peaks of same type
+    float threshold = 0.0f;
 
-    for ( int i = 1; i < n - 1; ++i ) {
-        if ( norm[i] > norm[i - 1] && norm[i] > norm[i + 1] ) {
-            posPeaks.emplace_back(i, norm[i]);
-        }
-        if ( normInv[i] > normInv[i - 1] && normInv[i] > normInv[i + 1] ) {
-            negPeaks.emplace_back(i, normInv[i]);
-        }
-    }
-    // // debugging and printing the scores
-    // std::cerr << "posPeaks (idx,val): ";
-    // for ( auto& p : posPeaks )
-    //     std::cerr << "(" << p.first << "," << p.second << ") ";
-    // std::cerr << "\n";
-    // std::cerr << "negPeaks (idx,val): ";
-    // for ( auto& p : negPeaks )
-    //     std::cerr << "(" << p.first << "," << p.second << ") ";
-    // std::cerr << "\n";
+    // posPeaks = Candidates for PL and PR
+    std::vector<std::pair<int, float>> posPeaks = FindPeaks(norm, min_dist, threshold);
+    // negPeaks = Candidates for NL and NR (Inner Walls)
+    std::vector<std::pair<int, float>> negPeaks = FindPeaks(normInv, min_dist, threshold);
 
-    // helper function to find the best pair of peaks based on their height and distance between peaks
-    auto bestPair = [&](const std::vector<std::pair<int, float>>& peaks)
-            -> std::pair<float, std::pair<int, int>> {
-        float               bestScore = -std::numeric_limits<float>::infinity( );
-        std::pair<int, int> bestIdx   = {-1, -1};
+    // 4. Search Pattern: NL -> PL ... PR <- NR
+    float bestScore = -std::numeric_limits<float>::infinity( );
+    int   best_NL = -1, best_NR = -1;
+    int   best_PL = -1, best_PR = -1;
 
-        // Adding gap penalty and out of range penalty so that we would favor more the peaks within the range, but also if nothing was found within range, out of range peaks are saved and returned
-        const float IDEAL_GAP           = min_tube_diameter;
-        const float GAP_PENALTY         = 0.1f; // e.g. 0.1 points lost per pixel of gap deviation
-        const float OUT_OF_RANGE_FACTOR = 10.0f; // scale factor for out-of-range penalty- changed that from 2 to 10 to heavily penalize out of range to favor in range more
+    float center_idx = (float)(n - 1) / 2.0f;
 
-        for ( size_t a = 0; a < peaks.size( ); ++a ) {
-            for ( size_t b = a + 1; b < peaks.size( ); ++b ) {
-                int i   = peaks[a].first;
-                int j   = peaks[b].first;
-                int gap = j - i;
+    // Iterate through all possible Left Negative Peaks (NL)
+    for ( const auto& pNL : negPeaks ) {
+        int   idx_NL = pNL.first;
+        float val_NL = pNL.second;
 
-                float sumAmp = peaks[a].second + peaks[b].second;
-                float score  = sumAmp - GAP_PENALTY * std::fabs(gap - IDEAL_GAP);
+        // Iterate through all possible Right Negative Peaks (NR)
+        for ( const auto& pNR : negPeaks ) {
+            int   idx_NR = pNR.first;
+            float val_NR = pNR.second;
 
-                // scale penalty by how far out of range the gap is
-                if ( gap < min_tube_diameter ) {
-                    score -= OUT_OF_RANGE_FACTOR * (min_tube_diameter - gap);
+            // Basic geometric constraints
+            if ( idx_NR <= idx_NL )
+                continue; // Right must be to the right
+            float width = idx_NR - idx_NL;
+            if ( width < min_tube_diameter || width > max_tube_diameter )
+                continue;
+
+            // Find best PL: Highest Positive peak strictly between NL and Center
+            int   idx_PL     = -1;
+            float max_val_PL = -1.0f;
+
+            for ( const auto& pPos : posPeaks ) {
+                if ( pPos.first > idx_NL && pPos.first < (idx_NL + idx_NR) / 2.0f ) {
+                    if ( pPos.second > max_val_PL ) {
+                        max_val_PL = pPos.second;
+                        idx_PL     = pPos.first;
+                    }
                 }
-                else if ( gap > max_tube_diameter ) {
-                    score -= OUT_OF_RANGE_FACTOR * (gap - max_tube_diameter);
+            }
+
+            // Find best PR: Highest Positive peak strictly between Center and NR
+            int   idx_PR     = -1;
+            float max_val_PR = -1.0f;
+
+            for ( const auto& pPos : posPeaks ) {
+                if ( pPos.first > (idx_NL + idx_NR) / 2.0f && pPos.first < idx_NR ) {
+                    if ( pPos.second > max_val_PR ) {
+                        max_val_PR = pPos.second;
+                        idx_PR     = pPos.first;
+                    }
                 }
+            }
+
+            // Require both Positive peaks to exist for this pattern
+            if ( idx_PL != -1 && idx_PR != -1 ) {
+
+                // --- SCORING ---
+                float score = 0.0f;
+
+                // 1. Magnitude Score (Sum of all 4 peaks)
+                score += (val_NL + val_NR + max_val_PL + max_val_PR);
+
+                // 2. Symmetry Penalty (Tube should be roughly centered)
+                float midpoint = (float)(idx_NL + idx_NR) / 2.0f;
+                score -= 5.0f * std::abs(midpoint - center_idx) / n;
+
+                // 3. Wall Thickness Consistency Penalty
+                float left_wall_w  = idx_PL - idx_NL;
+                float right_wall_w = idx_NR - idx_PR;
+                score -= 2.0f * std::abs(left_wall_w - right_wall_w);
 
                 if ( score > bestScore ) {
                     bestScore = score;
-                    bestIdx   = {i, j};
+                    best_NL   = idx_NL;
+                    best_NR   = idx_NR;
+                    best_PL   = idx_PL;
+                    best_PR   = idx_PR;
                 }
             }
         }
-
-        return std::make_pair(bestScore, bestIdx);
-    };
-
-    // 3) Find best pair among positive peaks and among negative peaks.
-    auto [scorePos, bestPos] = bestPair(posPeaks);
-    auto [scoreNeg, bestNeg] = bestPair(negPeaks);
-
-    std::pair<int, int> bestPairIdx = {-1, -1};
-
-    // 4) If no valid pairs exist at all, return -1
-    if ( scorePos == -std::numeric_limits<float>::infinity( ) &&
-         scoreNeg == -std::numeric_limits<float>::infinity( ) ) {
-        return {-1, -1};
     }
 
-    // 5) keeping the values of the best negative peaks as reference
-    bestPairIdx     = bestNeg;
-    float bestScore = scoreNeg;
-
-    // find the highest negative peaks within the range of the expected diameter
-    // then find the positive peak before the first negative peak and the positive peak after the second negative peak and those should be the outer edges
-    if ( bestNeg.first != -1 && bestNeg.second != -1 ) {
-        int iNeg = bestNeg.first;
-        int jNeg = bestNeg.second;
-        if ( iNeg > jNeg )
-            std::swap(iNeg, jNeg); // enforce left->right
-
-        // Find last positive BEFORE iNeg
-        int   posBefore = -1;
-        float ampBefore = 0;
-        for ( auto it = posPeaks.rbegin( ); it != posPeaks.rend( ); ++it ) {
-            if ( it->first < iNeg ) {
-                posBefore = it->first;
-                ampBefore = it->second;
-                break;
-            }
+    // 5. Return Results
+    if ( best_NL != -1 && best_NR != -1 && best_PL != -1 && best_PR != -1 ) {
+        if ( use_half_way ) {
+            // Average of Inner (Neg) and Outer (Pos) wall positions
+            float edge_L = (float)(best_NL + best_PL) / 2.0f;
+            float edge_R = (float)(best_NR + best_PR) / 2.0f;
+            return {edge_L, edge_R};
         }
-
-        // Find first positive AFTER jNeg
-        int   posAfter = -1;
-        float ampAfter = 0;
-        for ( auto& p : posPeaks ) {
-            if ( p.first > jNeg ) {
-                posAfter = p.first;
-                ampAfter = p.second;
-                break;
-            }
+        else {
+            // Return the Inner Walls (Negative peaks)
+            return {(float)best_NL, (float)best_NR};
         }
-        const float IDEAL_GAP           = min_tube_diameter;
-        const float GAP_PENALTY         = 0.1f; // e.g. 0.1 points lost per pixel of gap deviation
-        const float OUT_OF_RANGE_FACTOR = 10.0f; // scale factor for out-of-range penalty
+    }
 
-        // Step 3: Only refine if both positives exist and are ordered
-        if ( posAfter != -1 && posBefore != -1 && posAfter < posBefore ) {
-            int   gap    = posBefore - posAfter;
-            float sumAmp = ampAfter + ampBefore;
-            float score  = sumAmp - GAP_PENALTY * std::fabs(gap - IDEAL_GAP);
+    return {-1.0f, -1.0f};
+}
 
-            if ( gap < min_tube_diameter )
-                score -= OUT_OF_RANGE_FACTOR * (min_tube_diameter - gap);
-            else if ( gap > max_tube_diameter )
-                score -= OUT_OF_RANGE_FACTOR * (gap - max_tube_diameter);
+// Simple absolute column sum logic
+float FindTubeMainFrame::GetMaxAbsColumnSum(Image* img) {
+    float max_sum = -FLT_MAX;
+    int   w       = img->logical_x_dimension;
+    int   h       = img->logical_y_dimension;
 
-            // Step 4: Replace if adjacency score is better
-            if ( score > bestScore ) {
-                bestScore   = score;
-                bestPairIdx = {posAfter, posBefore};
+    for ( int x = 0; x < w; x++ ) {
+        float sum = 0.0f;
+        for ( int y = 0; y < h; y++ ) {
+            long addr = img->ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
+            sum += img->real_values[addr];
+        }
+        if ( std::abs(sum) > max_sum )
+            max_sum = std::abs(sum);
+    }
+    return max_sum;
+}
+
+// Basic Alignment logic: Rotate -90 to +90 to find vertical alignment
+void FindTubeMainFrame::AlignImage(Image& image) {
+    float best_psi = 0.0f;
+    float best_sum = -FLT_MAX;
+
+    Image temp_image;
+    temp_image.Allocate(image.logical_x_dimension, image.logical_y_dimension, true);
+
+    // Coarse Search: -90 to 90 degrees, step 5
+    for ( float psi = -90.0f; psi <= 90.0f; psi += 5.0f ) {
+        temp_image.CopyFrom(&image);
+        // Padding with FLT_MAX usually means background/average padding in Rotate2DInPlace
+        temp_image.Rotate2DInPlace(psi, 0.0);
+        float current_sum = GetMaxAbsColumnSum(&temp_image);
+
+        if ( current_sum > best_sum ) {
+            best_sum = current_sum;
+            best_psi = psi;
+        }
+    }
+
+    // Fine Search: +/- 5 degrees, step 1
+    float coarse_psi = best_psi;
+    for ( float psi = coarse_psi - 5.0f; psi <= coarse_psi + 5.0f; psi += 1.0f ) {
+        temp_image.CopyFrom(&image);
+        temp_image.Rotate2DInPlace(psi, 0.0);
+        float current_sum = GetMaxAbsColumnSum(&temp_image);
+
+        if ( current_sum > best_sum ) {
+            best_sum = current_sum;
+            best_psi = psi;
+        }
+    }
+
+    // Apply best rotation to original image
+    image.Rotate2DInPlace(best_psi, 0.0);
+}
+
+void FindTubeMainFrame::CalculateAndDisplay( ) {
+    if ( ! m_image_loaded )
+        return;
+
+    LoadCurrentSlice( );
+
+    SetStatusText("Calculating...");
+
+    double pixel_size   = wxAtof(m_pixel_size_ctrl->GetValue( ));
+    double lp_res       = wxAtof(m_lp_res_ctrl->GetValue( ));
+    double mask_rad_ang = wxAtof(m_mask_rad_ctrl->GetValue( ));
+    bool   do_align     = m_align_check->IsChecked( );
+    bool   do_halfway   = m_half_way_check->IsChecked( );
+
+    if ( pixel_size <= 0 )
+        pixel_size = 1.0;
+
+    Image   process_image;
+    MRCFile input_file(m_current_filename.ToStdString( ), false);
+    process_image.ReadSlice(&input_file, m_current_slice);
+    process_image.Normalize( );
+
+    // 1. Align Image if requested
+    if ( do_align ) {
+        AlignImage(process_image);
+    }
+
+    if ( lp_res > 0.0 ) {
+        process_image.ForwardFFT( );
+        process_image.GaussianLowPassFilter((float)((pixel_size * 2.0) / lp_res));
+        process_image.BackwardFFT( );
+    }
+
+    if ( mask_rad_ang > 0 ) {
+        float mask_rad_pix = mask_rad_ang / pixel_size;
+        int   w            = process_image.logical_x_dimension;
+        int   h            = process_image.logical_y_dimension;
+        float cx           = w / 2.0f;
+        float cy           = h / 2.0f;
+        for ( int y = 0; y < h; y++ ) {
+            for ( int x = 0; x < w; x++ ) {
+                float dx = x - cx;
+                float dy = y - cy;
+                if ( sqrt(dx * dx + dy * dy) > mask_rad_pix ) {
+                    long addr                       = process_image.ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
+                    process_image.real_values[addr] = 0.0f;
+                }
             }
         }
     }
-    // Final: enforce sorted order before returning
-    if ( bestPairIdx.first > bestPairIdx.second )
-        std::swap(bestPairIdx.first, bestPairIdx.second);
 
-    return std::make_pair(bestPairIdx.first, bestPairIdx.second);
+    m_image_panel->SetImage(&process_image);
+
+    int w = process_image.logical_x_dimension;
+    int h = process_image.logical_y_dimension;
+
+    std::vector<float> profile(w, 0.0f);
+
+    for ( int x = 0; x < w; x++ ) {
+        double sum = 0;
+        for ( int y = 0; y < h; y++ ) {
+            long addr = process_image.ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
+            sum += process_image.real_values[addr];
+        }
+        profile[x] = (float)sum;
+    }
+
+    double min_diam_pix = wxAtof(m_min_diam_ctrl->GetValue( ));
+    double max_diam_pix = wxAtof(m_max_diam_ctrl->GetValue( ));
+
+    // Convert to float, already in pixels
+    std::pair<float, float> edges = FindOuterTubeEdges(profile, (float)min_diam_pix, (float)max_diam_pix, do_halfway);
+
+    m_image_panel->SetGraphData(profile, edges);
+
+    if ( edges.first != -1 && edges.second != -1 ) {
+        float diameter_pix = edges.second - edges.first;
+        float diameter_ang = diameter_pix * pixel_size;
+
+        m_result_text->SetLabel(wxString::Format("Tube Diameter: %.2f px (%.2f A) [Left: %.1f, Right: %.1f]",
+                                                 diameter_pix, diameter_ang, edges.first, edges.second));
+    }
+    else {
+        m_result_text->SetLabel("Tube Diameter: Not Found");
+    }
+
+    SetStatusText("Done.");
+}
+
+bool FindTubeDiametersGuiApp::OnInit( ) {
+    FindTubeMainFrame* frame = new FindTubeMainFrame("Find Tube Diameters", wxPoint(50, 50), wxSize(1200, 800));
+    frame->Show(true);
+    return true;
 }

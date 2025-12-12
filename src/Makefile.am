@@ -303,7 +303,9 @@ bin_PROGRAMS =  cisTEM_job_control \
                 helical_rotational_average \
                 align_classaverage_tubes \
                 extract_aligned_classaverage_images \
-                create_average_power_spectrum
+                create_average_power_spectrum \
+                analyze_average_power_spectrum \
+                calculate_autocorrelation
 
 
 
@@ -1055,17 +1057,12 @@ rotation_calculation_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 rotation_calculation_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 rotation_calculation_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 rotation_calculation_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
-shift_or_rotate_images_SOURCES  = programs/shift_or_rotate_images/shift_or_rotate_images.cpp
-shift_or_rotate_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
-shift_or_rotate_images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
-shift_or_rotate_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
-shift_or_rotate_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
-rotation_calculation_SOURCES  = programs/rotation_calculation/rotation_calculation.cpp
-rotation_calculation_CXXFLAGS = $(WX_CPPFLAGS_BASE)
-rotation_calculation_CPPFLAGS = $(WX_CPPFLAGS_BASE)
-rotation_calculation_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
-rotation_calculation_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+calculate_autocorrelation_SOURCES  = programs/calculate_autocorrelation/calculate_autocorrelation.cpp
+calculate_autocorrelation_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+calculate_autocorrelation_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+calculate_autocorrelation_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+calculate_autocorrelation_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 prepare_stack_classaverage_SOURCES  = programs/prepare_stack_classaverage/prepare_stack_classaverage.cpp
 prepare_stack_classaverage_CXXFLAGS = $(WX_CPPFLAGS_BASE)
@@ -1170,10 +1167,10 @@ apply_RASTR_phi_constraints_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 apply_RASTR_phi_constraints_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 apply_RASTR_phi_constraints_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
-find_tube_diameters_SOURCES  = programs/find_tube_diameters/find_tube_diameters.cpp
-find_tube_diameters_CXXFLAGS = $(WX_CPPFLAGS_BASE)
-find_tube_diameters_CPPFLAGS = $(WX_CPPFLAGS_BASE)
-find_tube_diameters_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+find_tube_diameters_SOURCES  = programs/find_tube_diameters/find_tube_diameters.cpp gui/PlotCurvePanel.cpp gui/mathplot.cpp
+find_tube_diameters_CXXFLAGS = $(WX_CPPFLAGS)
+find_tube_diameters_CPPFLAGS = $(WX_CPPFLAGS)
+find_tube_diameters_LDADD    = libcore.a $(WX_LIBS) $(MKL_LIBS)
 find_tube_diameters_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 create_sphere_mask_SOURCES  = programs/create_sphere_mask/create_sphere_mask.cpp
@@ -1187,6 +1184,12 @@ create_average_power_spectrum_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 create_average_power_spectrum_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 create_average_power_spectrum_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 create_average_power_spectrum_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+analyze_average_power_spectrum_SOURCES = programs/analyze_average_power_spectrum/analyze_average_power_spectrum.cpp gui/PlotCurvePanel.cpp gui/mathplot.cpp
+analyze_average_power_spectrum_CXXFLAGS = $(WX_CPPFLAGS)
+analyze_average_power_spectrum_CPPFLAGS = $(WX_CPPFLAGS)
+analyze_average_power_spectrum_LDADD = libguicore.a libcore.a $(WX_LIBS) $(MKL_LIBS)
+analyze_average_power_spectrum_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 multiply_two_stacks_SOURCES  = programs/multiply_two_stacks/multiply_two_stacks.cpp
 multiply_two_stacks_CXXFLAGS = $(WX_CPPFLAGS_BASE)
