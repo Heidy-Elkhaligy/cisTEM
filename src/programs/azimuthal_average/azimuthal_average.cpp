@@ -361,81 +361,6 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     int  x_dim                  = my_input_file.ReturnXSize( );
     int  y_dim                  = my_input_file.ReturnYSize( );
 
-    // // To Whiten images
-    // Curve noise_power_spectrum;
-    // Image sum_power;
-    // Image input_image_local;
-    // Image temp_image_local;
-    // Image sum_power_local;
-
-    // sum_power.Allocate(my_input_file.ReturnXSize( ), my_input_file.ReturnYSize( ), false);
-    // sum_power.SetToConstant(0.0f);
-
-    // Curve number_of_terms;
-    // float mask_radius_for_noise;
-    // float mask_falloff = 20.0; // in Angstrom
-
-    // wxPrintf("Calculating noise power spectrum...\n\n");
-
-    // noise_power_spectrum.SetupXAxisForFourierSpace(sum_power.logical_x_dimension, 2.f);
-    // number_of_terms.SetupXAxisForFourierSpace(sum_power.logical_x_dimension, 2.f);
-    // // current_line         = 0;
-    // // random_reset_counter = 0;
-
-    // noise_power_spectrum.MakeThreadSafeForNThreads(max_threads);
-    // number_of_terms.MakeThreadSafeForNThreads(max_threads);
-
-    // #pragma omp parallel num_threads(max_threads) default(none) shared(my_input_file, outer_mask_radius, mask_falloff, sum_power, pixel_size, number_of_input_images) private(temp_image_local, sum_power_local, input_image_local, mask_radius_for_noise)
-    //     {
-
-    //         input_image_local.Allocate(my_input_file.ReturnXSize( ), my_input_file.ReturnYSize( ), true);
-    //         temp_image_local.Allocate(my_input_file.ReturnXSize( ), my_input_file.ReturnYSize( ), true);
-    //         sum_power_local.Allocate(my_input_file.ReturnXSize( ), my_input_file.ReturnYSize( ), false);
-    //         sum_power_local.SetToConstant(0.0f);
-    // #pragma omp for schedule(static, 1)
-    //         for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
-    // #pragma omp critical
-    //             {
-
-    //                 input_image_local.ReadSlice(&my_input_file, image_counter + 1);
-    //             }
-    //             mask_radius_for_noise = 0.95f * my_input_file.ReturnXSize( ) / 2.0f - mask_falloff / 2.0f / pixel_size;
-
-    //             //float variance = input_image_local.ReturnVarianceOfRealValues(mask_radius_for_noise, 0.0f, 0.0f, 0.0f, true); //do I need invert_mask = true here?
-
-    //             //input_image_local.MultiplyByConstant(1.0f / sqrtf(variance));
-    //             //input_image_local.CosineMask(mask_radius_for_noise, mask_falloff / pixel_size, true);
-    //             // input_image_local.ForwardFFT( );
-    //             // input_image_local.ZeroCentralPixel( );
-    //             // input_image_local.BackwardFFT( );
-
-    //             float variance = input_image_local.ReturnVarianceOfRealValues(mask_radius_for_noise, 0.0f, 0.0f, 0.0f, true); //invert_mask = true here? to return variance outside the masked region
-
-    //             input_image_local.MultiplyByConstant(1.0f / sqrtf(variance));
-    //             input_image_local.CosineMask(mask_radius_for_noise, mask_falloff / pixel_size, true);
-    //             input_image_local.ForwardFFT( );
-    //             temp_image_local.CopyFrom(&input_image_local);
-    //             temp_image_local.ConjugateMultiplyPixelWise(input_image_local);
-    //             sum_power_local.AddImage(&temp_image_local);
-    //         }
-
-    // #pragma omp critical
-    //         {
-    //             sum_power.AddImage(&sum_power_local);
-    //         }
-
-    //         input_image_local.Deallocate( );
-    //         sum_power_local.Deallocate( );
-    //         temp_image_local.Deallocate( );
-
-    //     } // end omp section
-
-    //     sum_power.Compute1DRotationalAverage(noise_power_spectrum, number_of_terms);
-    //     noise_power_spectrum.SquareRoot( );
-    //     noise_power_spectrum.Reciprocal( );
-    //     noise_power_spectrum.WriteToFile("noise_power.txt");
-    //     ////////////////////////////////////////////////////////
-
     // If use_memory to make things fast
     Image* image_stack;
     if ( use_memory )
@@ -455,13 +380,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     }
 
     float mask_edge = x_dim * 0.05f; // 5% of the pixels will constitute the soft edge
-    // std::unique_ptr<Curve> whitening_filter_ptr;
-    // Curve                  number_of_terms;
-    // Curve                  local_whitening_filter;
-    // local_whitening_filter.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((my_input_file.ReturnXSize( ) / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
-    // number_of_terms.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((my_input_file.ReturnXSize( ) / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
-    // local_whitening_filter.MakeThreadSafeForNThreads(max_threads);
-    // number_of_terms.MakeThreadSafeForNThreads(max_threads);
+
     if ( use_memory ) {
         wxPrintf("\nLoading images to memory...\n\n");
         ProgressBar* loading_progress = new ProgressBar(number_of_input_images);
@@ -1050,6 +969,14 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
     delete sum_progress;
 
+    // Image trial_image;
+    // trial_image.Allocate(x_dim, y_dim, true);
+    // trial_image.SetToConstant(0.0);
+    // trial_image.CopyFrom(&sum_images[0]);
+    // ApplyInverseAbelGradient(&trial_image);
+    // trial_image.QuickAndDirtyWriteSlice("trial_image_inverse_abel.mrc", 1);
+    // trial_image.Deallocate( );
+
     // divide the sum image by CTF sum of squares and centering it
     for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
 
@@ -1067,43 +994,43 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         sum_images[bin_index].ForwardFFT( );
         divide_by_ctf_sum_of_squares(sum_images[bin_index], (*CTFSumOfSquares)[bin_index]);
         sum_images[bin_index].BackwardFFT( );
-        sum_images[bin_index].ApplyRampFilter( );
-        // do rotational average then top down averaging to ensure the average image is symmetrical as much as possible
-        sum_images[bin_index].AverageRotationally( );
-        sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial_after_average_rotationally.mrc", bin_index + 1);
+        // sum_images[bin_index].ApplyRampFilter( );
+        // // do rotational average then top down averaging to ensure the average image is symmetrical as much as possible
+        // sum_images[bin_index].AverageRotationally( );SS
+        // sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial_after_average_rotationally.mrc", bin_index + 1);
 
-        sum_image_direction(&sum_images[bin_index], 2);
-        sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial_after_second_sum_direction.mrc", bin_index + 1);
+        // sum_image_direction(&sum_images[bin_index], 2);
+        // sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial_after_second_sum_direction.mrc", bin_index + 1);
 
-        // shift sum image to the center after padding based on tube peaks
-        // This shift is necessary at this point to ensure the cross-correlation shift is centered correctly later
-        // but we need to invert the contrast first to get the correct shift
-        sum_images[bin_index].InvertRealValues( );
+        // // shift sum image to the center after padding based on tube peaks
+        // // This shift is necessary at this point to ensure the cross-correlation shift is centered correctly later
+        // // but we need to invert the contrast first to get the correct shift
+        // sum_images[bin_index].InvertRealValues( );
 
-        // std::vector<float> column_sum = sum_image_columns(&sum_images[bin_index]);
+        // // std::vector<float> column_sum = sum_image_columns(&sum_images[bin_index]);
 
-        // wxPrintf("column_sum: ");
-        // for ( float v : column_sum ) {
-        //     wxPrintf("%f ", (double)v);
-        // }
-        // wxPrintf("\n");
+        // // wxPrintf("column_sum: ");
+        // // for ( float v : column_sum ) {
+        // //     wxPrintf("%f ", (double)v);
+        // // }
+        // // wxPrintf("\n");
 
-        // auto [peak_one_column_sum, peak_two_column_sum] = FindOuterTubeEdges(column_sum, min_tube_diameter, max_tube_diameter);
-        // wxPrintf("final_sum_image diameter is %f, and peaks are at %f, %f \n", std::abs((peak_one_column_sum - peak_two_column_sum)), (double)peak_one_column_sum, (double)peak_two_column_sum);
+        // // auto [peak_one_column_sum, peak_two_column_sum] = FindOuterTubeEdges(column_sum, min_tube_diameter, max_tube_diameter);
+        // // wxPrintf("final_sum_image diameter is %f, and peaks are at %f, %f \n", std::abs((peak_one_column_sum - peak_two_column_sum)), (double)peak_one_column_sum, (double)peak_two_column_sum);
 
-        // float tube_center_column_sum          = std::abs(peak_one_column_sum - peak_two_column_sum) / 2;
-        // float distance_from_center_column_sum = -((peak_one_column_sum + peak_two_column_sum) / 2 - center_peak_index);
-        // wxPrintf("distance from center is %f \n", distance_from_center_column_sum);
+        // // float tube_center_column_sum          = std::abs(peak_one_column_sum - peak_two_column_sum) / 2;
+        // // float distance_from_center_column_sum = -((peak_one_column_sum + peak_two_column_sum) / 2 - center_peak_index);
+        // // wxPrintf("distance from center is %f \n", distance_from_center_column_sum);
 
-        ComputeCylindricalAverage(&temp);
-        temp.QuickAndDirtyWriteSlice("temp.mrc", bin_index + 1);
+        // // ComputeCylindricalAverage(&temp);
+        // // temp.QuickAndDirtyWriteSlice("temp.mrc", bin_index + 1);
+        // // temp.Deallocate( );
+        // //to center the sum image
+        // // sum_images[bin_index].PhaseShift(distance_from_center_column_sum, 0.0, 0.0); // the x-shift needed to center the sum image
 
-        //to center the sum image
-        // sum_images[bin_index].PhaseShift(distance_from_center_column_sum, 0.0, 0.0); // the x-shift needed to center the sum image
-
-        sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial_with_extra_rotational_average.mrc", bin_index + 1);
-        // invert back the contrast
-        sum_images[bin_index].InvertRealValues( );
+        // sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial_with_extra_rotational_average.mrc", bin_index + 1);
+        // // invert back the contrast
+        // sum_images[bin_index].InvertRealValues( );
     }
 
     // delete CTFSumOfSquares;
@@ -1457,7 +1384,8 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     noise_power_spectrum.SquareRoot( );
     noise_power_spectrum.Reciprocal( );
     noise_power_spectrum.WriteToFile("noise_power.txt");
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     wxPrintf("\nCreating Final Sum Images...\n\n");
     ProgressBar* update_sum_progress = new ProgressBar(number_of_input_images);
@@ -1526,6 +1454,31 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
     delete update_sum_progress;
 
+    // sum_images_after_aln[0].QuickAndDirtyWriteSlice("sum_image_after_aln_b4_abel_transform.mrc", 1);
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////// WILL BE ADJUSTED LATER WHEN I AM DONE WITH IT ///////////////////////////////////////////
+    // Image trial_image;
+    // trial_image.Allocate(x_dim, y_dim, true);
+    // trial_image.SetToConstant(0.0);
+    // trial_image.CopyFrom(&sum_images_after_aln[0]);
+    // sum_image_direction(&trial_image, 2);
+    // //trial_image.ApplyRampFilter( );
+    // //trial_image.GenerateRotationalVolumeFrom2D( );
+    // // ApplyInverseAbelGradient(&trial_image);
+    // trial_image.SwapRealSpaceQuadrants( );
+    // // trial_image.ForwardFFT( );
+    // // trial_image.AverageRadially( );
+    // // trial_image.BackwardFFT( );
+    // trial_image.QuickAndDirtyWriteSlices("trial_image_rotational_average_FT_swap_radial_average.mrc", 1, x_dim);
+    // trial_image.Deallocate( );
+    // // Image abel_transform_image;
+    // // Image abel_transform_3d;
+
+    // // abel_transform_image.Allocate(x_dim, y_dim, true);
+    // // abel_transform_image.SetToConstant(0.0);
+    // // abel_transform_image.CopyFrom(&sum_images_after_aln[0]);
+
     for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
         // Vertically summing the image to ensure cross-correlation doesn't correlate by mistake to a wrong area if input images are pre-aligned
         sum_image_direction(&sum_images_after_aln[bin_index], 2);
@@ -1533,7 +1486,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         divide_by_ctf_sum_of_squares(sum_images_after_aln[bin_index], (*CTFSumOfSquaresFinal)[bin_index]);
         //sum_images_after_aln[bin_index].GaussianLowPassFilter((pixel_size * 2) / 150);
         sum_images_after_aln[bin_index].BackwardFFT( );
-        sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("final_sum_image_gaussian_before_averaging.mrc", bin_index + 1);
+        //sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("final_sum_image_gaussian_before_averaging.mrc", bin_index + 1);
 
         // Vertically summing the image to ensure cross-correlation doesn't correlate by mistake to a wrong area if input images are pre-aligned
         sum_image_direction(&sum_whiten_images[bin_index], 2);
@@ -1676,14 +1629,14 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     my_output_sum_image_filename.SetPixelSize(pixel_size);
     my_output_sum_image_filename.WriteHeader( );
     my_output_sum_image_filename.rewrite_header_on_close = true;
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /////////////////////////      IMPORTANT //////////////////////////////////////////////////////////////////////////////
-    //////////////////////// This part should copy and use the sum_images_after_aln not sum_images              /////////////
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////      IMPORTANT //////////////////////////////////////////////////////////////////////////////
+    //////////////////////// This part should copy and use the sum_images_after_aln not sum_whiten_image if no RASTR and SPOT_RASTR chosen  /////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     wxPrintf("\nPreparing Azimuthal Average model for projection...\n\n");
     ProgressBar* prepare_projections_progress = new ProgressBar(bins_count);
     // save the azimuthal average if the RASTR and SPOT RASTR are not true in the correct contrast
@@ -2262,19 +2215,19 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         RASTR_projections_output.WriteHeader( );
         RASTR_projections_output.rewrite_header_on_close = true;
 
-        // MRCFile unmasked_projections_output("unmasked_projection_image_to_be_subtracted.mrc", true);
-        // if ( ! unmasked_projections_output.IsOpen( ) ) {
-        //     unmasked_projections_output.OpenFile("unmasked_projection_image_to_be_subtracted.mrc", true);
-        //     if ( ! unmasked_projections_output.IsOpen( ) ) {
-        //         wxPrintf("ERROR: Could not open '%s' for writing\n", "unmasked_projection_image_to_be_subtracted.mrc");
-        //         DEBUG_ABORT;
-        //     }
-        // }
-        // unmasked_projections_output.my_header.SetNumberOfImages(number_of_input_images * number_of_models);
-        // unmasked_projections_output.my_header.SetDimensionsImage(x_dim, y_dim);
-        // unmasked_projections_output.SetPixelSize(pixel_size);
-        // unmasked_projections_output.WriteHeader( );
-        // unmasked_projections_output.rewrite_header_on_close = true;
+        MRCFile masked_upweighted_output("masked_upweighted_regions_no_rotation_shift.mrc", true);
+        if ( ! masked_upweighted_output.IsOpen( ) ) {
+            masked_upweighted_output.OpenFile("masked_upweighted_regions_no_rotation_shift.mrc", true);
+            if ( ! masked_upweighted_output.IsOpen( ) ) {
+                wxPrintf("ERROR: Could not open '%s' for writing\n", "masked_upweighted_regions_no_rotation_shift.mrc");
+                DEBUG_ABORT;
+            }
+        }
+        masked_upweighted_output.my_header.SetNumberOfImages(number_of_input_images * number_of_models);
+        masked_upweighted_output.my_header.SetDimensionsImage(x_dim, y_dim);
+        masked_upweighted_output.SetPixelSize(pixel_size);
+        masked_upweighted_output.WriteHeader( );
+        masked_upweighted_output.rewrite_header_on_close = true;
 
         // This is needed to adjust for extra shift happening in ExtractSlice
         adjusted_x_shifts = new float[number_of_input_images]( );
@@ -2285,7 +2238,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
         //Will make the outer loop on one thread but inner loop multi-threaded to ensure the sequential processing of the models!
         for ( long model_counter = 0; model_counter < number_of_models; model_counter++ ) {
-#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, best_psi_value, best_x_shift_value, number_of_models, input_3d, mask_upweighted, image_stack, model_counter, noise_power_spectrum, mask_falloff,                                                                                    \
+#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, best_psi_value, best_x_shift_value, number_of_models, input_3d, mask_upweighted, image_stack, model_counter, noise_power_spectrum, mask_falloff, masked_upweighted_output,                                                          \
                                                                                             ctf_parameters_stack, max_threads, diameter_bins, bins_count, current_image, mask_subtract_progress, align_upweighted, RASTR_projections_output, use_memory, adjusted_x_shifts, adjusted_y_shifts,                                                                         \
                                                                                             input_ctf_values_from_star_file, current_ctf, pixel_size, padding_factor, masked_3d, x_mask_center, y_mask_center, x_dim, y_dim, z_mask_center, RASTR_adjusted_x_shifts, RASTR_adjusted_y_shifts, mask_projection, input_mask, filter_radius, outside_weight, cosine_edge, \
                                                                                             center_upweighted, sphere_mask_radius, RASTR_output_filename, my_output_RASTR_filename, projection_volume_3d, masked_projection_volume_3d) private(phi, projection_3d, projection_image, padded_projection_image, my_parameters_for_subtraction, mask_projection_image, padded_mask_projection_image, mask_parameters, subtracted_RASTR_image, centered_upweighted_image, unmasked_projection_image, unmasked_padded_projection_image, unmasked_projection_3d)
@@ -2455,14 +2408,24 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     // If we will mask the upweighted regions then we need to determine the location of the center of the upweighted region in the image
                     RotationMatrix RASTR_temp_matrix;
                     float          RASTR_rotated_x, RASTR_rotated_y, RASTR_rotated_z;
-                    // // generate the full rotation matrix
-                    RASTR_temp_matrix.SetToEulerRotation(-(90.0 - best_psi_value[subtraction_image_counter]), -90.0, -phi);
+                    // // // generate the full rotation matrix
+                    // RASTR_temp_matrix.SetToEulerRotation(-(90.0 - best_psi_value[subtraction_image_counter]), -90.0, -phi);
 
+                    // RASTR_temp_matrix.RotateCoords((x_mask_center - current_image.physical_address_of_box_center_x), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), RASTR_rotated_x, RASTR_rotated_y, RASTR_rotated_z);
+
+                    // // center the masked upweighted regions to the center
+                    // RASTR_adjusted_x_shifts[current_counter] = -RASTR_rotated_x; //negative as this is the shift to return the images back to the center
+                    // RASTR_adjusted_y_shifts[current_counter] = -RASTR_rotated_y;
+
+                    // updated rotation matrix calculation logic
+                    RASTR_temp_matrix.SetToEulerRotation(phi, 90.0, 90.0 - best_psi_value[subtraction_image_counter]);
+                    RASTR_temp_matrix.ReturnTransposed( );
                     RASTR_temp_matrix.RotateCoords((x_mask_center - current_image.physical_address_of_box_center_x), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), RASTR_rotated_x, RASTR_rotated_y, RASTR_rotated_z);
 
                     // center the masked upweighted regions to the center
                     RASTR_adjusted_x_shifts[current_counter] = -RASTR_rotated_x; //negative as this is the shift to return the images back to the center
                     RASTR_adjusted_y_shifts[current_counter] = -RASTR_rotated_y;
+
                     // wxPrintf("original mask location in x, y, z at phi %f and psi %f are %i, %i, %i and adjusted RASTR location are %f, %f, %f \n", -phi, -(90.0 - best_psi_value[subtraction_image_counter]), (x_mask_center - current_image.physical_address_of_box_center_x), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), -RASTR_rotated_x, -RASTR_rotated_y, -RASTR_rotated_z);
                     float average = subtracted_RASTR_image.ReturnAverageOfRealValues( );
                     mask_parameters.Init(phi, 90.0, 90.0 - best_psi_value[subtraction_image_counter], 0.0, 0.0);
@@ -2488,7 +2451,16 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     mask_volume_in_voxels = subtracted_RASTR_image.ApplyMask(mask_projection_image, cosine_edge / pixel_size, outside_weight, pixel_size / filter_radius, pixel_size / filter_edge, average, true);
                     // //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                     //masked subtracted before centering
-                    //subtracted_RASTR_image.QuickAndDirtyWriteSlice("masked_subtracted_RASTR_images.mrc", current_counter + 1);
+
+                    if ( ! masked_upweighted_output.IsOpen( ) ) {
+                        masked_upweighted_output.OpenFile("masked_upweighted_regions_no_rotation_shift.mrc", true);
+                        if ( ! masked_upweighted_output.IsOpen( ) ) {
+                            wxPrintf("ERROR: Could not open 'masked_upweighted_regions_no_rotation_shift.mrc' for writing\n");
+                            DEBUG_ABORT;
+                        }
+                    }
+#pragma omp critical
+                    subtracted_RASTR_image.WriteSlice(&masked_upweighted_output, current_counter + 1);
                     // if user specified a masked upweighted region should be generated then it can be centered (not aligned) or (aligned not centered) or (centered and aligned) or (saved as is not aligned not centered)
                     // if the user specified that the upweighted regions should be centered before saving them
                     if ( center_upweighted == true && align_upweighted == false ) {
@@ -2506,7 +2478,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     else if ( (align_upweighted == true && center_upweighted == true) ) {
                         subtracted_RASTR_image.Rotate2DInPlace(best_psi_value[subtraction_image_counter], FLT_MAX);
                         // I guess since the images will be aligned top down then no need for y shift?
-                        subtracted_RASTR_image.PhaseShift(RASTR_adjusted_x_shifts[current_counter], 0.0);
+                        subtracted_RASTR_image.PhaseShift(adjusted_x_shifts[current_counter], 0.0); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
 
 #pragma omp critical
                         subtracted_RASTR_image.WriteSlice(&my_output_RASTR_filename, current_counter + 1);
@@ -2650,15 +2622,15 @@ std::vector<float> sum_image_columns(Image* current_image) {
 float max_abs_column_sum(Image* current_image) {
     std::vector<float> column_sum(current_image->logical_x_dimension, 0.0);
 
-    long pixel_counter = 0;
+    //long pixel_counter = 0;
 
     for ( int i = 0; i < current_image->logical_x_dimension; i++ ) {
         for ( int j = 0; j < current_image->logical_y_dimension; j++ ) {
             long pixel_coord_xy = current_image->ReturnReal1DAddressFromPhysicalCoord(i, j, 0);
             column_sum[i] += current_image->real_values[pixel_coord_xy];
-            pixel_counter++;
+            //pixel_counter++;
         }
-        pixel_counter += current_image->padding_jump_value;
+        //pixel_counter += current_image->padding_jump_value;
     }
 
     float max_value = *std::max_element(column_sum.begin( ), column_sum.end( ),
