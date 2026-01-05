@@ -12001,6 +12001,10 @@ void Image::ApplyRampFilter( ) {
                 // float current_frequency = sqrtf(z_sq + y_sq + powf(ReturnFourierLogicalCoordGivenPhysicalCoord_X(i) * fourier_voxel_size_x, 2));
                 float current_filter = sqrt2_v<float> * sqrtf(z_sq + y_sq + powf(ReturnFourierLogicalCoordGivenPhysicalCoord_X(i) * fourier_voxel_size_x, 2));
 
+                // // Calculates distance based ONLY on X (standard 1D Ramp)
+                // float x_freq         = ReturnFourierLogicalCoordGivenPhysicalCoord_X(i) * fourier_voxel_size_x;
+                // float current_filter = sqrt2_v<float> * fabsf(x_freq);
+
                 // Removed check on filter < 0.0f, this is impossible without powf failing or max_frequency_inv being re-defined
 
                 // Apply filter
