@@ -682,7 +682,7 @@ bool align_classaverage_tubes::DoCalculation( ) {
         Image average_image;
         Image tuning_average_image;
         float tuned_rotation_range = psi_step; ///2
-        float tuned_step_size      = 0.25;
+        float tuned_step_size      = psi_step / 20;
         Image fine_tuning_average_image;
 
         wxPrintf("\nFinding Tube Rotation Using Cross-Correlation...\n\n");
@@ -1279,3 +1279,190 @@ void divide_by_ctf_sum_of_squares(Image& current_image, std::vector<float>& ctf_
         }
     }
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// Helper function: Find peaks in a 1D dataset
+// Returns a vector of pairs: {index, value}
+// Sorted by index
+std::vector<std::pair<int, float>> FindPeaks(const std::vector<float>& data, float min_dist, float threshold) {
+    std::vector<std::pair<int, float>> peaks;
+    int                                n = data.size( );
+    if ( n < 3 )
+        return peaks;
+
+    // 1. Identify local maxima above threshold
+    for ( int i = 1; i < n - 1; ++i ) {
+        if ( data[i] > data[i - 1] && data[i] > data[i + 1] ) {
+            if ( data[i] >= threshold ) {
+                peaks.push_back({i, data[i]});
+            }
+        }
+    }
+
+    // 2. Sort by amplitude (descending) to prioritize processing largest peaks
+    std::sort(peaks.begin( ), peaks.end( ), [](const std::pair<int, float>& a, const std::pair<int, float>& b) {
+        return a.second > b.second;
+    });
+
+    // 3. Filter peaks based on minimum distance
+    std::vector<std::pair<int, float>> filtered_peaks;
+    for ( const auto& p : peaks ) {
+        bool keep = true;
+        for ( const auto& accepted : filtered_peaks ) {
+            if ( std::abs(p.first - accepted.first) < min_dist ) {
+                keep = false;
+                break;
+            }
+        }
+        if ( keep ) {
+            filtered_peaks.push_back(p);
+        }
+    }
+
+    // 4. Sort final results by index (ascending) for geometric processing
+    std::sort(filtered_peaks.begin( ), filtered_peaks.end( ), [](const std::pair<int, float>& a, const std::pair<int, float>& b) {
+        return a.first < b.first;
+    });
+
+    return filtered_peaks;
+}
+
+// Main Algorithm: Find Outer Tube Edges
+// use_half_way defaults to true
+std::pair<float, float> FindOuterTubeEdges(const std::vector<float>& cols, float min_tube_diameter, float max_tube_diameter, bool use_half_way = true) {
+    int n = cols.size( );
+    if ( n < 3 )
+        return {-1.0f, -1.0f};
+
+    // 1. Smooth the profile
+    std::vector<float> smooth_cols   = cols;
+    int                smooth_radius = 2;
+    for ( int i = smooth_radius; i < n - smooth_radius; ++i ) {
+        double sum = 0;
+        for ( int k = -smooth_radius; k <= smooth_radius; ++k ) {
+            sum += cols[i + k];
+        }
+        smooth_cols[i] = sum / (2 * smooth_radius + 1);
+    }
+
+    // 2. Normalize
+    float              minVal = *std::min_element(smooth_cols.begin( ), smooth_cols.end( ));
+    std::vector<float> norm(n);
+    for ( int i = 0; i < n; ++i )
+        norm[i] = smooth_cols[i] - minVal;
+
+    float normMax = *std::max_element(norm.begin( ), norm.end( ));
+    if ( normMax <= 0.0f )
+        return {-1.0f, -1.0f};
+
+    // Inverted profile for Negative peaks (Inner Walls)
+    std::vector<float> normInv(n);
+    for ( int i = 0; i < n; ++i )
+        normInv[i] = normMax - norm[i];
+
+    // 3. Find All Peaks
+    float min_dist  = 5.0f; // Minimum distance between peaks of same type
+    float threshold = 0.0f;
+
+    // posPeaks = Candidates for PL and PR (Outer Walls)
+    std::vector<std::pair<int, float>> posPeaks = FindPeaks(norm, min_dist, threshold);
+    // negPeaks = Candidates for NL and NR (Inner Walls)
+    std::vector<std::pair<int, float>> negPeaks = FindPeaks(normInv, min_dist, threshold);
+
+    // 4. Search Pattern: NL -> PL ... PR <- NR
+    float bestScore = -std::numeric_limits<float>::infinity( );
+    int   best_NL = -1, best_NR = -1;
+    int   best_PL = -1, best_PR = -1;
+
+    float center_idx = (float)(n - 1) / 2.0f;
+
+    // Iterate through all possible Left Negative Peaks (NL)
+    for ( const auto& pNL : negPeaks ) {
+        int   idx_NL = pNL.first;
+        float val_NL = pNL.second;
+
+        // Iterate through all possible Right Negative Peaks (NR)
+        for ( const auto& pNR : negPeaks ) {
+            int   idx_NR = pNR.first;
+            float val_NR = pNR.second;
+
+            // Basic geometric constraints
+            if ( idx_NR <= idx_NL )
+                continue; // Right must be to the right
+            float width = idx_NR - idx_NL;
+            if ( width < min_tube_diameter || width > max_tube_diameter )
+                continue;
+
+            // Find best PL: Highest Positive peak strictly between NL and Center
+            int   idx_PL     = -1;
+            float max_val_PL = -1.0f;
+
+            for ( const auto& pPos : posPeaks ) {
+                if ( pPos.first > idx_NL && pPos.first < (idx_NL + idx_NR) / 2.0f ) {
+                    if ( pPos.second > max_val_PL ) {
+                        max_val_PL = pPos.second;
+                        idx_PL     = pPos.first;
+                    }
+                }
+            }
+
+            // Find best PR: Highest Positive peak strictly between Center and NR
+            int   idx_PR     = -1;
+            float max_val_PR = -1.0f;
+
+            for ( const auto& pPos : posPeaks ) {
+                if ( pPos.first > (idx_NL + idx_NR) / 2.0f && pPos.first < idx_NR ) {
+                    if ( pPos.second > max_val_PR ) {
+                        max_val_PR = pPos.second;
+                        idx_PR     = pPos.first;
+                    }
+                }
+            }
+
+            // Require both Positive peaks to exist for this pattern
+            if ( idx_PL != -1 && idx_PR != -1 ) {
+
+                // --- SCORING ---
+                float score = 0.0f;
+
+                // 1. Magnitude Score (Sum of all 4 peaks)
+                score += (val_NL + val_NR + max_val_PL + max_val_PR);
+
+                // 2. Symmetry Penalty (Tube should be roughly centered)
+                float midpoint = (float)(idx_NL + idx_NR) / 2.0f;
+                score -= 5.0f * std::abs(midpoint - center_idx) / n;
+
+                // 3. Wall Thickness Consistency Penalty
+                float left_wall_w  = idx_PL - idx_NL;
+                float right_wall_w = idx_NR - idx_PR;
+                score -= 2.0f * std::abs(left_wall_w - right_wall_w);
+
+                if ( score > bestScore ) {
+                    bestScore = score;
+                    best_NL   = idx_NL;
+                    best_NR   = idx_NR;
+                    best_PL   = idx_PL;
+                    best_PR   = idx_PR;
+                }
+            }
+        }
+    }
+
+    // 5. Return Results
+    if ( best_NL != -1 && best_NR != -1 && best_PL != -1 && best_PR != -1 ) {
+        if ( use_half_way ) {
+            // Average of Inner (Neg) and Outer (Pos) wall positions
+            float edge_L = (float)(best_NL + best_PL) / 2.0f;
+            float edge_R = (float)(best_NR + best_PR) / 2.0f;
+            return {edge_L, edge_R};
+        }
+        else {
+            // Return the Inner Walls (Negative peaks)
+            return {(float)best_NL, (float)best_NR};
+        }
+    }
+
+    return {-1.0f, -1.0f};
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
