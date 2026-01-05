@@ -125,12 +125,12 @@ void EulerSearch::InitGrid(wxString wanted_symmetry_symbol, float wanted_angular
         Init(wanted_resolution_limit, wanted_parameter_map, wanted_parameters_to_keep);
 
     angular_step_size = wanted_angular_step_size;
-    phi_start         = wanted_phi_start;
-    theta_start       = wanted_theta_start;
-    psi_max           = wanted_psi_max;
-    psi_step          = wanted_psi_step;
-    psi_start         = wanted_psi_start;
-    symmetry_symbol   = wanted_symmetry_symbol;
+    phi_start         = wanted_phi_start; // it is always 0.0 in refine3d unless it will not be refined
+    theta_start       = wanted_theta_start; //it used to be 0 but I changed it in refine3d to be 70 in the first global search run, in local search run and if Theta not selected they have different values!!!!
+    psi_max           = wanted_psi_max; // is set up 0 in refine3d so I will keep it and change Psi max later manually here
+    psi_step          = wanted_psi_step; // I changed this in refine3d to ensure a small angle is used as step size
+    psi_start         = wanted_psi_start; // Psi start is a random number within 360, I will keep it  here but will hard code it later in Euler_search::Run
+    symmetry_symbol   = wanted_symmetry_symbol; // maybe later will add a symmetry symbol of AH = asymmetric helical reconstruction which will hard code all the values of Psi, Theta and Phi here in euler_search
 
     SetSymmetryLimits( );
     CalculateGridSearchPositions( );
@@ -172,31 +172,44 @@ void EulerSearch::InitRandom(wxString wanted_symmetry_symbol, float wanted_psi_s
 
 void EulerSearch::CalculateGridSearchPositions(bool random_start_angle) {
     int   i;
-    float phi_step   = 360.0;
-    float theta_step = 360.0;
+    float phi_step   = 360.0; // This value change later so why set it to 360 here
+    float theta_step = 360.0; // This value change later so why set it to 360 here
     float phi;
     float theta;
     float theta_max_local;
     float theta_start_local;
     float phi_start_local;
 
-    //	phi_max = 360.0;
-    theta_max_local = theta_max;
+    /////////////////////////////////////////////////////////////////////
+    ////////////////// Added Tube Constraints /////////////////////////
+    float tube_theta_start = 80.0;
+    float tube_theta_max   = 100.0;
+    theta_start_local      = tube_theta_start;
+    theta_max_local        = tube_theta_max;
+    //angular_step_size      = angular_step_size; // is divided again by 2 here to ensure we have small angular steps even at low resolution resampled images to get as many orientations as possible in all constrained Theta and possible Phi
+    /////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////
+    //	phi_max = 360.0; //it was commented before and it is not important as C symmetry set this value to 360
+    //theta_max_local = theta_max;
 
+    wxPrintf("Angular step size inside calculate grid search %f \n", angular_step_size);
     if ( ! parameter_map.phi )
-        phi_start_local = phi_start;
+        phi_start_local = phi_start; // is not always zero, it is set to the psi sometimesin refine3d???
     if ( parameter_map.phi ) {
         //		theta_max_local = 90.0;
         // make sure that theta_step produces an integer number of steps
         theta_step = theta_max_local / int(theta_max_local / angular_step_size + 0.5);
         if ( random_start_angle == true )
-            theta_start_local = fabsf(theta_step / 2.0f * global_random_number_generator.GetUniformRandom( ));
+            //theta_start_local = fabsf(theta_step / 2.0f * global_random_number_generator.GetUniformRandom( ));
+            //theta_start_local = theta_start_local + (fabsf(global_random_number_generator.GetUniformRandom( )) * (theta_max_local - theta_start_local)); // This should generate random numbers betwwen 70-110
+            theta_start_local = tube_theta_start; // to always generate projections covering the whole range
         else
-            theta_start_local = 0.0f;
+            //theta_start_local = 0.0f;
+            theta_start_local = tube_theta_start;
     }
     else {
-        theta_start_local = theta_start;
-        theta_max_local   = theta_start;
+        theta_start_local = theta_start; // This is the given Theta start in the InitGrid function
+        theta_max_local   = theta_start; //This is the given Theta start in the InitGrid function
     }
 
     if ( list_of_search_parameters != NULL )
@@ -208,9 +221,9 @@ void EulerSearch::CalculateGridSearchPositions(bool random_start_angle) {
     //		}
     //		delete [] list_of_search_parameters;							// delete array of pointers to float arrays
     //	}
-
+    // This loop to calculate how many search positions will be generated to allocate memory to them
     number_of_search_positions = 0;
-    for ( theta = theta_start_local; theta < theta_max_local + theta_step / 2.0; theta += theta_step ) {
+    for ( theta = theta_start_local; theta < theta_max_local + theta_step / 2.0; theta += theta_step ) { // removed + theta_step / 2.0 as it was causing out of range values
         if ( parameter_map.phi ) {
             if ( theta == 0.0 || theta == 180.0 ) {
                 phi_step = phi_max;
@@ -218,12 +231,16 @@ void EulerSearch::CalculateGridSearchPositions(bool random_start_angle) {
             else {
                 // angular sampling was adapted from Spider subroutine VOEA (Paul Penczek)
                 phi_step = fabsf(angular_step_size / sinf(deg_2_rad(theta)));
+                // Now the Phi step is not dependent on Theta and only depend on the given angular step size in the refine3d code
+                // Q: (do I need to not divide by 2 or keep it? because images are resampled and angular step size depend on the resolution and mask radius which are large in case of tubes)
+                //phi_step = angular_step_size; // I already divided the angular step size above by 2 so I can use it as is here
                 if ( phi_step > phi_max )
                     phi_step = phi_max;
                 phi_step = phi_max / int(phi_max / phi_step + 0.5);
             }
         }
-        for ( phi = 0; phi < phi_max; phi += phi_step ) {
+        //changed phi_max to 360.0 to ensure all phi angles are covered
+        for ( phi = 0; phi < phi_max; phi += phi_step ) { //phi_max vs 360
             number_of_search_positions++;
         }
     }
@@ -231,13 +248,13 @@ void EulerSearch::CalculateGridSearchPositions(bool random_start_angle) {
     Allocate2DFloatArray(list_of_search_parameters, number_of_search_positions, 2);
     //	list_of_search_parameters = new float* [2];							// dynamic array (size 2) of pointers to float
 
-    //	for (i = 0; i < 2; ++i)
+    //	for (i = 0; i < 2; ++i)P
     //	{
     //		list_of_search_parameters[i] = new float[number_of_search_positions];	// each i-th pointer is now pointing to dynamic array (size number_of_search_positions) of actual float values
     //	}
-
+    // This loop will assign angles to those search orientations/positions
     number_of_search_positions = 0;
-    for ( theta = theta_start_local; theta < theta_max_local + theta_step / 2.0; theta += theta_step ) {
+    for ( theta = theta_start_local; theta < theta_max_local + theta_step / 2.0; theta += theta_step ) { // removed + theta_step / 2.0 as it was causing out of range values
         if ( parameter_map.phi ) {
             if ( theta == 0.0 || theta == 180.0 ) {
                 phi_step = phi_max;
@@ -245,6 +262,9 @@ void EulerSearch::CalculateGridSearchPositions(bool random_start_angle) {
             else {
                 // angular sampling was adapted from Spider subroutine VOEA (Paul Penczek)
                 phi_step = fabsf(angular_step_size / sinf(deg_2_rad(theta)));
+                // Now the Phi step is not dependent on Theta and only depend on the given angular step size in the refine3d code
+                // Q: (do I need to not divide by 2 or keep it? because images are resampled and angular step size depend on the resolution and mask radius which are large in case of tubes)
+                //phi_step = angular_step_size;
                 if ( phi_step > phi_max )
                     phi_step = phi_max;
                 phi_step = phi_max / int(phi_max / phi_step + 0.5);
@@ -254,13 +274,13 @@ void EulerSearch::CalculateGridSearchPositions(bool random_start_angle) {
                     phi_start_local = 0.0f;
             }
         }
-        for ( phi = 0.0; phi < phi_max; phi += phi_step ) {
+        // changed phi_max to 360.0 to ensure all phi angles are covered
+        for ( phi = 0.0; phi < phi_max; phi += phi_step ) { //phi_max vs 360.0
             list_of_search_parameters[number_of_search_positions][0] = phi + phi_start_local;
             list_of_search_parameters[number_of_search_positions][1] = theta;
             number_of_search_positions++;
         }
     }
-
     if ( ! parameter_map.psi ) {
         test_mirror = false;
     }
@@ -358,9 +378,11 @@ void EulerSearch::SetSymmetryLimits( ) {
             DEBUG_ABORT;
         }
 
-        phi_max     = 360.0 / symmetry_number;
-        theta_max   = 90.0;
-        test_mirror = true;
+        phi_max   = 360.0 / symmetry_number;
+        theta_max = 90.0;
+        // I commented this to ensure theta search range is only 70-110 and doesn't go outside the range while psi search is still done when refining psi parameters is set to true
+        // test_mirror = true;
+        test_mirror = false;
 
         return;
     }
@@ -412,6 +434,8 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
     MyDebugAssertTrue(particle.particle_image->is_in_memory, "Particle image not allocated");
     MyDebugAssertTrue(input_3d.is_in_memory, "3D reference map not allocated");
     //	MyDebugAssertTrue(particle.particle_image->logical_x_dimension == input_3d.logical_x_dimension && particle.particle_image->logical_y_dimension == input_3d.logical_y_dimension, "Error: Image and 3D reference incompatible");
+    wxPrintf("Angular step size inside Euler search Run %f \n", angular_step_size);
+    wxPrintf("Psi step size inside Euler search Run %f \n", psi_step);
 
     int i;
     int j;
@@ -424,7 +448,23 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
     int max_pix_x         = max_search_x / particle.pixel_size;
     int max_pix_y         = max_search_y / particle.pixel_size;
     int padding_factor_2d = 4;
-    //	float psi;
+    // // //Added Psi new
+    // float psi; // Will search psi from 90+/- 10 degrees and 270+/- 10 degrees
+    // float psi_range = 10.0;
+    // // new psi variables section
+    // // Define fixed psi angles
+    // std::vector<float> allowed_psi_angles;
+    // float              psi_lower_range = 90.0f - psi_range;
+    // float              psi_upper_range = 90.0f + psi_range;
+    // //float              psi_full_range  = (psi_upper_range - psi_lower_range) * 2; // as we are calculating the opposite direction as well
+    // float psi_full_range = (psi_range * 2) * 2; // as we are calculating the opposite direction as well
+
+    // // I may need to adjust the psi step earlier in the refine3d code
+    // for ( psi = psi_lower_range; psi <= psi_upper_range; psi += psi_step )
+    //     allowed_psi_angles.push_back(psi);
+    // for ( psi = psi_lower_range + 180.0; psi <= psi_upper_range + 180.0; psi += psi_step )
+    //     allowed_psi_angles.push_back(psi);
+
     float           best_inplane_score;
     float           best_inplane_values[3];
     float           temp_float[6];
@@ -476,6 +516,9 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
 
     if ( parameter_map.psi ) {
         number_of_psi_positions = myroundint(psi_max / psi_step);
+        // // Need to find a better way to do this than hard coding them
+        // number_of_psi_positions = myroundint(psi_full_range / psi_step); // we are searching a total of 40 degrees of psi 20 at 90 and 20 in the opposite direction
+
         if ( number_of_psi_positions < 1 )
             number_of_psi_positions = 1;
     }
@@ -505,8 +548,11 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
         if ( parameter_map.psi ) {
             //			flipped_image->RotateFourier2DFromIndex(rotation_cache[psi_m], kernel_index[psi_i]);
             angles.GenerateRotationMatrix2D(psi_i * psi_step + psi_start);
+            // float psi_angle;
+            // psi_angle = allowed_psi_angles[psi_i];
+            // angles.GenerateRotationMatrix2D(psi_angle);
         }
-        else {
+        else { // if psi will not be optimized leave the given psi_start to InitGrid as is without any change
             angles.GenerateRotationMatrix2D(psi_start);
             //			flipped_image->RotateFourier2D(rotation_cache[psi_m], angles);
         }
@@ -582,6 +628,8 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
             if ( found_peak.value > best_inplane_score ) {
                 best_inplane_score     = found_peak.value;
                 best_inplane_values[0] = 360.0 - (psi_i * psi_step + psi_start);
+                // best_inplane_values[0] = 360.0 - allowed_psi_angles[psi_i];
+
                 best_inplane_values[1] = found_peak.x;
                 best_inplane_values[2] = found_peak.y;
                 mirrored_match         = false;
@@ -622,6 +670,7 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
                 if ( found_peak.value > best_inplane_score ) {
                     best_inplane_score     = found_peak.value;
                     best_inplane_values[0] = 360.0 - (psi_i * psi_step + psi_start);
+                    // best_inplane_values[0] = 360.0 - allowed_psi_angles[psi_i];
                     best_inplane_values[1] = found_peak.x;
                     best_inplane_values[2] = found_peak.y;
                     mirrored_match         = true;
@@ -630,6 +679,8 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
             //			}
             psi_m++;
         }
+        //wxPrintf("Psi step size inside Euler search Run function %f \n", psi_step);
+        // check that the saved values here are correct??!!!
         if ( best_inplane_score > list_of_best_parameters[best_parameters_to_keep][5] ) {
             list_of_best_parameters[best_parameters_to_keep][5] = best_inplane_score;
             if ( mirrored_match ) {
@@ -664,6 +715,14 @@ void EulerSearch::Run(Particle& particle, Image& input_3d, Image* projections) {
                 break;
             }
         }
+        //     // Print the best result after sorting to not over print results for now
+        //     // If I want to print all then I need to loop over i = 0 ; i < best_parameters_to_keep
+        //     wxPrintf("Best match: Phi = %.2f, Theta = %.2f, Psi = %.2f, ShiftX = %.2f, ShiftY = %.2f \n",
+        //              list_of_best_parameters[1][0],
+        //              list_of_best_parameters[1][1],
+        //              list_of_best_parameters[1][2],
+        //              list_of_best_parameters[1][3],
+        //              list_of_best_parameters[1][4]);
     }
     // *******************************
     /*	if (particle.origin_micrograph < 0) particle.origin_micrograph = 0;
