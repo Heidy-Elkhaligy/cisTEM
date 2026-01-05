@@ -49,8 +49,10 @@ bool helical_rotational_average::DoCalculation( ) {
     MRCFile my_output_filename(output_filename.ToStdString( ), true);
 
     long  number_of_input_images = my_input_filename.ReturnNumberOfSlices( );
+    float pixel_size             = my_input_filename.ReturnPixelSize( );
     Image my_image;
     Image my_volume;
+
     my_image.Allocate(my_input_filename.ReturnXSize( ), my_input_filename.ReturnYSize( ), true);
     my_volume.Allocate(my_input_filename.ReturnXSize( ), my_input_filename.ReturnYSize( ), my_input_filename.ReturnZSize( ), true, true);
     my_image.SetToConstant(0.0);
@@ -60,9 +62,76 @@ bool helical_rotational_average::DoCalculation( ) {
     my_volume.ReadSlices(&my_input_filename, 1, number_of_input_images);
     AverageAlongZ(&my_volume);
     AverageRotationallyPerSlice(&my_volume);
-    my_volume.ApplyRampFilter( );
+    // my_volume.ApplyRampFilter( );
     //wxPrintf("volume z dimension is %i, image z dimension is %i\n", my_volume.physical_address_of_box_center_z, my_image.physical_address_of_box_center_z);
     my_volume.WriteSlices(&my_output_filename, 1, number_of_input_images);
+
+    Image               model_volume;
+    Image               projection_volume_3d;
+    ReconstructedVolume input_3d;
+    Image               my_slice;
+    Image               projection_volume_image;
+    Image               padded_projection_volume_image;
+    AnglesAndShifts     my_parameters;
+
+    projection_volume_3d.Allocate(my_input_filename.ReturnXSize( ) * 2, my_input_filename.ReturnYSize( ) * 2, my_input_filename.ReturnZSize( ) * 2, true, true);
+    my_slice.Allocate(my_input_filename.ReturnXSize( ), my_input_filename.ReturnYSize( ), true);
+    model_volume.Allocate(2 * my_slice.logical_x_dimension, 2 * my_slice.logical_y_dimension, 2 * my_slice.logical_x_dimension, true);
+    model_volume.SetToConstant(0.0);
+    projection_volume_3d.SetToConstant(0.0);
+    my_slice.SetToConstant(0.0);
+    // copy one slice from the azimuthal average volume
+    // will this work?
+    my_slice.CopyFrom(&my_volume);
+
+    float edge_value = my_slice.ReturnAverageOfRealValuesOnEdges( );
+    my_slice.Resize(model_volume.logical_x_dimension, model_volume.logical_y_dimension, 1, edge_value);
+
+    //my_slice.QuickAndDirtyWriteSlice("my_slice.mrc", 1, my_input_filename.ReturnZSize( ));
+
+    // fill in the model volume with the azimuthal average slice
+    long volume_counter = 0;
+    for ( int z = 0; z < model_volume.logical_z_dimension; z++ ) {
+        for ( int y = 0; y < model_volume.logical_y_dimension; y++ ) {
+            for ( int x = 0; x < model_volume.logical_x_dimension; x++ ) {
+                long pixel_coord_xy                      = my_slice.ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
+                model_volume.real_values[volume_counter] = my_slice.real_values[pixel_coord_xy];
+                volume_counter++;
+            }
+            volume_counter += my_slice.padding_jump_value;
+        }
+    }
+
+    input_3d.InitWithDimensions(my_input_filename.ReturnXSize( ) * 2, my_input_filename.ReturnYSize( ) * 2, my_input_filename.ReturnZSize( ) * 2, pixel_size);
+    input_3d.density_map->CopyFrom(&my_volume);
+    float mask_radius    = FLT_MAX; //100 - FLT_MAX
+    input_3d.mask_radius = mask_radius;
+    input_3d.PrepareForProjections(0.0, 2.0 * pixel_size); // 0.0, 2.0 * pixel_size float low resolution limit and high resolution limit, bool approximate bining = F and apply_bining = T
+
+    projection_volume_3d.CopyFrom(input_3d.density_map);
+    // deallocate the reconstruction volume
+    input_3d.Deallocate( );
+
+    projection_volume_image.Allocate(my_input_filename.ReturnXSize( ), my_input_filename.ReturnYSize( ), true);
+    padded_projection_volume_image.Allocate(my_input_filename.ReturnXSize( ) * 2, my_input_filename.ReturnYSize( ) * 2, false); // as my volume now is already padded so no need to add extra padding
+
+    my_parameters.Init(90.0, 90.0, 90.0, 0.0, 0.0);
+    projection_volume_3d.ExtractSlice(padded_projection_volume_image, my_parameters);
+    padded_projection_volume_image.SwapRealSpaceQuadrants( ); // must do this step as image is not centered in the box
+    padded_projection_volume_image.BackwardFFT( );
+    padded_projection_volume_image.object_is_centred_in_box = true;
+    padded_projection_volume_image.ClipInto(&projection_volume_image);
+
+    wxString projection_filename;
+    size_t   ext_pos;
+
+    ext_pos             = output_filename.find('.');
+    output_filename     = output_filename.substr(0, ext_pos);
+    projection_filename = output_filename + "_projection.mrc";
+    MRCFile output_projection(projection_filename.ToStdString( ), true);
+    projection_volume_image.WriteSlice(&output_projection, 1);
+
+    //my_slice.QuickAndDirtyWriteSlice("my_slice.mrc", 1, my_input_filename.ReturnZSize( ));
 
     // Image Zaverage;
     // Zaverage.Allocate(my_input_filename.ReturnXSize( ), my_input_filename.ReturnYSize( ), true);
