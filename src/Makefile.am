@@ -305,7 +305,8 @@ bin_PROGRAMS =  cisTEM_job_control \
                 extract_aligned_classaverage_images \
                 create_average_power_spectrum \
                 analyze_average_power_spectrum \
-                calculate_autocorrelation
+                calculate_autocorrelation \
+                abel_transform
 
 
 
@@ -1166,6 +1167,14 @@ apply_RASTR_phi_constraints_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 apply_RASTR_phi_constraints_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 apply_RASTR_phi_constraints_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 apply_RASTR_phi_constraints_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+
+abel_transform_SOURCES  = programs/abel_transform/abel_transform.cpp
+abel_transform_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+abel_transform_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+abel_transform_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+abel_transform_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
 
 find_tube_diameters_SOURCES  = programs/find_tube_diameters/find_tube_diameters.cpp gui/PlotCurvePanel.cpp gui/mathplot.cpp
 find_tube_diameters_CXXFLAGS = $(WX_CPPFLAGS)
