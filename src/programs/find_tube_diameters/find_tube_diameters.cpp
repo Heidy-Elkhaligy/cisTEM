@@ -23,49 +23,205 @@
 // #include <map>
 // #include "../../gui/PlotHistPanel.h"
 
-// // ----------------------------------------------------------------------------
-// // Local maxima finder (SciPy-style, plateau aware)
-// // ----------------------------------------------------------------------------
+// // // ----------------------------------------------------------------------------
+// // // Local maxima finder (SciPy-style, plateau aware)
+// // // ----------------------------------------------------------------------------
+// static void local_maxima_1d(
+//         const std::vector<float>& x,
+//         std::vector<int>&         midpoints,
+//         std::vector<int>&         left_edges,
+//         std::vector<int>&         right_edges) {
+//     midpoints.clear( );
+//     left_edges.clear( );
+//     right_edges.clear( );
+
+//     const int n = static_cast<int>(x.size( ));
+//     if ( n < 3 )
+//         return;
+
+//     midpoints.reserve(n / 2);
+//     left_edges.reserve(n / 2);
+//     right_edges.reserve(n / 2);
+
+//     int       i     = 1;
+//     const int i_max = n - 1;
+
+//     while ( i < i_max ) {
+//         if ( x[i - 1] < x[i] ) {
+//             int i_ahead = i + 1;
+
+//             // Handle flat plateaus
+//             while ( i_ahead < i_max && x[i_ahead] == x[i] ) {
+//                 ++i_ahead;
+//             }
+
+//             // Confirm peak
+//             if ( x[i_ahead] < x[i] ) {
+//                 int left  = i;
+//                 int right = i_ahead - 1;
+//                 int mid   = (left + right) / 2;
+
+//                 left_edges.push_back(left);
+//                 right_edges.push_back(right);
+//                 midpoints.push_back(mid);
+
+//                 i = i_ahead;
+//                 continue;
+//             }
+//         }
+//         ++i;
+//     }
+// }
+
+// // better but not the best
+// static void local_maxima_1d(const std::vector<float>& x, std::vector<int>& midpoints, std::vector<int>& left_edges, std::vector<int>& right_edges) {
+//     midpoints.clear( );
+//     left_edges.clear( );
+//     right_edges.clear( );
+//     const int n = (int)x.size( );
+//     if ( n < 3 )
+//         return;
+
+//     const float EPS = 1e-6f;
+//     int         i = 1, i_max = n - 1;
+//     while ( i < i_max ) {
+//         if ( x[i - 1] + EPS < x[i] ) {
+//             int i_ahead = i + 1;
+//             while ( i_ahead < i_max && std::fabs(x[i_ahead] - x[i]) < EPS )
+//                 ++i_ahead;
+//             if ( x[i_ahead] + EPS < x[i] ) {
+//                 int left  = i;
+//                 int right = i_ahead - 1;
+//                 int mid   = (left + right) / 2;
+//                 // amplitude threshold relative to neighbors (avoid tiny noise peaks)
+//                 float neigh_max = std::max(x[left - 1], x[right + 1]);
+//                 if ( x[mid] - neigh_max > 1e-3f ) { // tune this threshold
+//                     left_edges.push_back(left);
+//                     right_edges.push_back(right);
+//                     midpoints.push_back(mid);
+//                 }
+//                 i = i_ahead;
+//                 continue;
+//             }
+//         }
+//         ++i;
+//     }
+// }
+
+float GetPixelSizeOrDefault(MRCFile& file) {
+    float pixel_size = file.ReturnPixelSize( );
+
+    if ( pixel_size <= 0.0f || ! std::isfinite(pixel_size) )
+        return 1.0f;
+
+    return pixel_size;
+}
+
+// Robust plateau-aware local maxima finder with depth filtering (no prominence)
 static void local_maxima_1d(
         const std::vector<float>& x,
         std::vector<int>&         midpoints,
         std::vector<int>&         left_edges,
-        std::vector<int>&         right_edges) {
+        std::vector<int>&         right_edges,
+        float                     min_depth_abs = 0.0f, // absolute depth threshold (disabled if <= 0)
+        float                     min_depth_rel = 0.0f, // relative depth (0..1) of local range, used if >0
+        int                       min_distance  = 10) // minimal horizontal separation
+{
     midpoints.clear( );
     left_edges.clear( );
     right_edges.clear( );
 
-    const int n = static_cast<int>(x.size( ));
+    const int n = (int)x.size( );
     if ( n < 3 )
         return;
 
-    midpoints.reserve(n / 2);
-    left_edges.reserve(n / 2);
-    right_edges.reserve(n / 2);
+    // global_range used only to scale tiny eps; not for depth decision
+    auto [min_it, max_it] = std::minmax_element(x.begin( ), x.end( ));
+    float global_range    = *max_it - *min_it;
+    if ( global_range <= 0.0f )
+        return;
 
-    int       i     = 1;
-    const int i_max = n - 1;
+    // window for local statistics (use something related to min_distance)
+    int w = std::max(5, min_distance / 2);
 
-    while ( i < i_max ) {
-        if ( x[i - 1] < x[i] ) {
-            int i_ahead = i + 1;
+    // small epsilon scaled to signal magnitude to detect plateaus robustly
+    const float EPS = 1e-6f * std::max(1.0f, std::abs(*max_it));
 
-            // Handle flat plateaus
-            while ( i_ahead < i_max && x[i_ahead] == x[i] ) {
-                ++i_ahead;
-            }
+    // Store depths for non-maximum suppression comparison
+    std::vector<float> peak_depths;
+    peak_depths.reserve(n / 8);
 
-            // Confirm peak
-            if ( x[i_ahead] < x[i] ) {
+    int i = 1;
+    while ( i < n - 1 ) {
+        // detect rising edge into plateau/peak
+        if ( x[i] > x[i - 1] + EPS ) {
+            int j = i + 1;
+            // handle plateau (equal values within EPS)
+            while ( j < n - 1 && std::fabs(x[j] - x[i]) < EPS )
+                ++j;
+
+            // confirm actual peak (next distinct sample is smaller)
+            if ( x[j] < x[i] - EPS ) {
                 int left  = i;
-                int right = i_ahead - 1;
+                int right = j - 1;
                 int mid   = (left + right) / 2;
 
-                left_edges.push_back(left);
-                right_edges.push_back(right);
-                midpoints.push_back(mid);
+                // compute local base = minimum in window around the peak midpoint
+                int win_lo = std::max(0, mid - w);
+                int win_hi = std::min(n - 1, mid + w);
 
-                i = i_ahead;
+                float base      = x[mid];
+                float local_max = x[mid];
+                for ( int k = win_lo; k <= win_hi; ++k ) {
+                    if ( x[k] < base )
+                        base = x[k];
+                    if ( x[k] > local_max )
+                        local_max = x[k];
+                }
+
+                // depth = how far above the local minimum this peak stands
+                float depth = x[mid] - base;
+
+                // local_range (for relative thresholding)
+                float local_range = local_max - base;
+                if ( local_range <= 0.0f )
+                    local_range = 1.0f; // avoid div-by-zero
+
+                // Decide acceptance:
+                // If an absolute min_depth is provided (>0) use it.
+                // Else if a relative min_depth_rel (>0) is provided, require depth >= min_depth_rel * local_range.
+                // Else accept any detected local maximum (no depth filtering).
+                bool accept = false;
+                if ( min_depth_abs > 0.0f ) {
+                    accept = (depth >= min_depth_abs);
+                }
+                else if ( min_depth_rel > 0.0f ) {
+                    accept = (depth >= min_depth_rel * local_range);
+                }
+                else {
+                    accept = true; // no depth requirement
+                }
+
+                if ( accept ) {
+                    // Enforce minimum distance: compare using 'depth' metric
+                    if ( ! midpoints.empty( ) && mid - midpoints.back( ) < min_distance ) {
+                        // replace the previous peak if this one is stronger (deeper)
+                        if ( depth > peak_depths.back( ) ) {
+                            midpoints.back( )   = mid;
+                            left_edges.back( )  = left;
+                            right_edges.back( ) = right;
+                            peak_depths.back( ) = depth;
+                        }
+                    }
+                    else {
+                        midpoints.push_back(mid);
+                        left_edges.push_back(left);
+                        right_edges.push_back(right);
+                        peak_depths.push_back(depth);
+                    }
+                }
+
+                i = j;
                 continue;
             }
         }
@@ -194,12 +350,25 @@ class ImagePanel : public wxPanel {
             int axis_y = y_off + draw_h + 2;
             dc.DrawLine(x_off, axis_y, x_off + draw_w, axis_y);
 
-            int img_w         = m_image.GetWidth( );
-            int tick_interval = 20;
-            if ( img_w > 1000 )
+            int img_w = m_image.GetWidth( );
+            int tick_interval;
+
+            if ( img_w <= 100 ) {
+                // "if image is 100 or less it would be spaced every 20"
+                tick_interval = 20;
+            }
+            else if ( img_w < 500 ) {
+                // "if > 100 and less than 500 it would be spaced every 40"
+                tick_interval = 40;
+            }
+            else if ( img_w < 1000 ) {
+                // "if more then ... 50" (for medium-large images)
+                tick_interval = 50;
+            }
+            else {
+                // "if more then ... 100" (for very large images)
                 tick_interval = 100;
-            if ( img_w < 100 )
-                tick_interval = 10;
+            }
 
             float scale_x = (float)draw_w / img_w;
 
@@ -466,7 +635,7 @@ class FindTubeMainFrame : public wxFrame {
         controlSizer->Add(m_mask_rad_ctrl, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 5);
 
         controlSizer->Add(new wxStaticText(this, wxID_ANY, "Low Pass Res:"), 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 10);
-        m_lp_res_ctrl = new wxTextCtrl(this, ID_lp_res, "100", wxDefaultPosition, wxSize(60, -1), wxTE_PROCESS_ENTER);
+        m_lp_res_ctrl = new wxTextCtrl(this, ID_lp_res, "150", wxDefaultPosition, wxSize(60, -1), wxTE_PROCESS_ENTER);
         controlSizer->Add(m_lp_res_ctrl, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 5);
 
         m_pixel_size_ctrl->Bind(wxEVT_TEXT_ENTER, &FindTubeMainFrame::OnParamChange, this);
@@ -513,7 +682,7 @@ class FindTubeMainFrame : public wxFrame {
     }
 
     void OnOpen(wxCommandEvent& event) {
-        wxFileDialog openFileDialog(this, "Open MRC file", "", "", "MRC files (*.mrc)|*.mrc", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+        wxFileDialog openFileDialog(this, "Open MRC file", "", "", "MRC files (*.mrc;*.mrcs)|*.mrc;*.mrcs", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
         if ( openFileDialog.ShowModal( ) == wxID_CANCEL )
             return;
 
@@ -524,6 +693,7 @@ class FindTubeMainFrame : public wxFrame {
             wxMessageBox("Error opening file", "Error", wxICON_ERROR);
             return;
         }
+        m_pixel_size_ctrl->SetValue(wxString::Format("%.3f", GetPixelSizeOrDefault(input_file)));
 
         m_total_slices  = input_file.ReturnNumberOfSlices( );
         m_current_slice = 1;
@@ -659,9 +829,240 @@ class FindTubeMainFrame : public wxFrame {
         }
     }
 
+    // struct EdgeCandidate {
+    //     float diff; // Contrast strength (amplitude difference)
+    //     float midpoint; // Sub-pixel location
+    // };
+
+    // std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
+    //                                        float                     min_tube_diameter,
+    //                                        float                     max_tube_diameter,
+    //                                        bool                      invert_contrast) {
+    //     int n = static_cast<int>(cols.size( ));
+    //     if ( n < 3 )
+    //         return {-1, -1};
+
+    //     // 1. Preprocessing & Normalization
+    //     std::vector<float> profile = cols;
+    //     if ( invert_contrast ) {
+    //         for ( float& val : profile )
+    //             val = -val;
+    //     }
+
+    //     float              min_val = *std::min_element(profile.begin( ), profile.end( ));
+    //     float              max_val = *std::max_element(profile.begin( ), profile.end( ));
+    //     std::vector<float> norm(n);
+    //     // // normalizing the values to better find prominent peaks
+    //     // float range = max_val - min_val;
+    //     // if ( range <= 1e-6f )
+    //     //     range = 1.0f;
+
+    //     for ( int i = 0; i < n; ++i )
+    //         norm[i] = (profile[i] - min_val); /// range
+
+    //     float              max_norm = *std::max_element(norm.begin( ), norm.end( ));
+    //     std::vector<float> norm_inv(n);
+    //     for ( int i = 0; i < n; ++i )
+    //         norm_inv[i] = max_norm - norm[i];
+    //     // for ( int i = 0; i < n; ++i )
+    //     //     norm_inv[i] = 1.0f - norm[i];
+
+    //     // 2. Detect Peaks
+    //     std::vector<int> pos_mids, p_l, p_r;
+    //     std::vector<int> neg_mids, n_l, n_r;
+    //     local_maxima_1d(norm, pos_mids, p_l, p_r, 0.0f, 0.20f, 10); //Use relative depth (e.g. require peak >= 20% of local swing):
+    //     local_maxima_1d(norm_inv, neg_mids, n_l, n_r, 0.0f, 0.20f, 10); // expected minimum separation between distinct local maxima 10
+
+    //     std::cout << "\n=== PROFILE DEBUG ===\n";
+    //     for ( int i = 0; i < n; ++i ) {
+    //         std::cout << i
+    //                   << "  norm=" << norm[i]
+    //                   << "  norm_inv=" << norm_inv[i];
+
+    //         if ( std::find(pos_mids.begin( ), pos_mids.end( ), i) != pos_mids.end( ) )
+    //             std::cout << "  <-- POS_PEAK";
+
+    //         if ( std::find(neg_mids.begin( ), neg_mids.end( ), i) != neg_mids.end( ) )
+    //             std::cout << "  <-- NEG_PEAK";
+
+    //         std::cout << "\n";
+    //     }
+    //     // Ensure peaks are sorted by their index (left-to-right)
+    //     std::sort(pos_mids.begin( ), pos_mids.end( ));
+    //     std::sort(neg_mids.begin( ), neg_mids.end( ));
+
+    //     // 3. Classify Candidates into Left (Rising) and Right (Falling) Lists
+    //     std::vector<EdgeCandidate> left_candidates;
+    //     std::vector<EdgeCandidate> right_candidates;
+
+    //     // for ( int pos : pos_mids ) {
+    //     //     // --- Left Wall (Rising: Neg -> Pos) ---
+    //     //     int   best_neg_left = -1;
+    //     //     float min_dist_left = std::numeric_limits<float>::max( );
+
+    //     //     for ( int neg : neg_mids ) {
+    //     //         if ( neg < pos ) {
+    //     //             float dist = static_cast<float>(pos - neg);
+    //     //             if ( dist < min_dist_left ) {
+    //     //                 min_dist_left = dist;
+    //     //                 best_neg_left = neg;
+    //     //             }
+    //     //         }
+    //     //     }
+    //     //     if ( best_neg_left != -1 ) {
+    //     //         float diff = std::abs(norm[pos] - norm[best_neg_left]);
+    //     //         float mid  = (pos + best_neg_left) / 2.0f;
+    //     //         left_candidates.push_back({diff, mid});
+    //     //     }
+
+    //     //     // --- Right Wall (Falling: Pos -> Neg) ---
+    //     //     int   best_neg_right = -1;
+    //     //     float min_dist_right = std::numeric_limits<float>::max( );
+
+    //     //     for ( int neg : neg_mids ) {
+    //     //         if ( neg > pos ) {
+    //     //             float dist = static_cast<float>(neg - pos);
+    //     //             if ( dist < min_dist_right ) {
+    //     //                 min_dist_right = dist;
+    //     //                 best_neg_right = neg;
+    //     //             }
+    //     //         }
+    //     //     }
+    //     //     if ( best_neg_right != -1 ) {
+    //     //         float diff = std::abs(norm[pos] - norm[best_neg_right]);
+    //     //         float mid  = (pos + best_neg_right) / 2.0f;
+    //     //         right_candidates.push_back({diff, mid});
+    //     //     }
+    //     // }
+
+    //     // precompute gradient (optionally smoothing beforehand)
+    //     std::vector<float> grad(n, 0.0f);
+    //     for ( int i = 1; i < n - 1; ++i )
+    //         grad[i] = 0.5f * (norm[i + 1] - norm[i - 1]);
+    //     grad[0]     = grad[1];
+    //     grad[n - 1] = grad[n - 2];
+
+    //     for ( int pos : pos_mids ) {
+    //         // best NEG by contrast to the left
+    //         int   best_neg_left      = -1;
+    //         float best_contrast_left = -1.0f;
+    //         for ( int neg : neg_mids ) {
+    //             if ( neg < pos ) {
+    //                 float contrast = std::abs(norm[pos] - norm[neg]);
+    //                 if ( contrast > best_contrast_left ) {
+    //                     best_contrast_left = contrast;
+    //                     best_neg_left      = neg;
+    //                 }
+    //             }
+    //         }
+    //         if ( best_neg_left != -1 ) {
+    //             // pick gradient maximum between neg and pos as midpoint
+    //             int   lo      = std::min(best_neg_left, pos);
+    //             int   hi      = std::max(best_neg_left, pos);
+    //             int   best_k  = lo;
+    //             float best_ag = std::fabs(grad[lo]);
+    //             for ( int k = lo; k <= hi; ++k ) {
+    //                 float ag = std::fabs(grad[k]);
+    //                 if ( ag > best_ag ) {
+    //                     best_ag = ag;
+    //                     best_k  = k;
+    //                 }
+    //             }
+    //             left_candidates.push_back({best_contrast_left, (float)best_k});
+    //         }
+
+    //         // best NEG by contrast to the right
+    //         int   best_neg_right      = -1;
+    //         float best_contrast_right = -1.0f;
+    //         for ( int neg : neg_mids ) {
+    //             if ( neg > pos ) {
+    //                 float contrast = std::abs(norm[pos] - norm[neg]);
+    //                 if ( contrast > best_contrast_right ) {
+    //                     best_contrast_right = contrast;
+    //                     best_neg_right      = neg;
+    //                 }
+    //             }
+    //         }
+    //         if ( best_neg_right != -1 ) {
+    //             int   lo      = std::min(pos, best_neg_right);
+    //             int   hi      = std::max(pos, best_neg_right);
+    //             int   best_k  = lo;
+    //             float best_ag = std::fabs(grad[lo]);
+    //             for ( int k = lo; k <= hi; ++k ) {
+    //                 float ag = std::fabs(grad[k]);
+    //                 if ( ag > best_ag ) {
+    //                     best_ag = ag;
+    //                     best_k  = k;
+    //                 }
+    //             }
+    //             right_candidates.push_back({best_contrast_right, (float)best_k});
+    //         }
+    //     }
+
+    //     // 4. Sort candidates by strength to prioritize better edges during debug
+    //     auto sort_fn = [](const EdgeCandidate& a, const EdgeCandidate& b) {
+    //         return a.diff > b.diff;
+    //     };
+    //     std::sort(left_candidates.begin( ), left_candidates.end( ), sort_fn);
+    //     std::sort(right_candidates.begin( ), right_candidates.end( ), sort_fn);
+
+    //     // 5. Find Best Pair using Specific Scoring Function
+    //     float best_score     = -std::numeric_limits<float>::infinity( );
+    //     int   best_left_idx  = -1;
+    //     int   best_right_idx = -1;
+
+    //     const float IDEAL_GAP           = min_tube_diameter;
+    //     const float GAP_PENALTY         = 0.1f;
+    //     const float OUT_OF_RANGE_FACTOR = 10.0f;
+
+    //     for ( const auto& l : left_candidates ) {
+    //         for ( const auto& r : right_candidates ) {
+
+    //             // Ensure gap is positive and absolute
+    //             // float gap    = std::abs(r.midpoint - l.midpoint);
+    //             float gap = r.midpoint - l.midpoint;
+    //             if ( gap <= 0.0f )
+    //                 continue; // right_candidates sorted by midpoint -> can break early
+    //             if ( gap < min_tube_diameter * 0.5f || gap > max_tube_diameter * 1.5f )
+    //                 continue;
+    //             float sumAmp = l.diff + r.diff;
+
+    //             // Base score: Contrast - Deviation from Ideal
+    //             float score = sumAmp - GAP_PENALTY * std::fabs(gap - IDEAL_GAP);
+
+    //             // Apply Out-of-Range Penalties
+    //             if ( gap < min_tube_diameter ) {
+    //                 score -= OUT_OF_RANGE_FACTOR * (min_tube_diameter - gap);
+    //             }
+    //             else if ( gap > max_tube_diameter ) {
+    //                 score -= OUT_OF_RANGE_FACTOR * (gap - max_tube_diameter);
+    //             }
+
+    //             // Update Best
+    //             if ( score > best_score ) {
+    //                 best_score     = score;
+    //                 best_left_idx  = static_cast<int>(std::round(l.midpoint));
+    //                 best_right_idx = static_cast<int>(std::round(r.midpoint));
+    //             }
+    //         }
+    //     }
+
+    //     // 6. Return Result
+    //     // If score is still negative infinity, no valid pairs existed
+    //     if ( best_score == -std::numeric_limits<float>::infinity( ) ) {
+    //         return {-1, -1};
+    //     }
+
+    //     // Optional sanity check: If the best score is still incredibly low due to
+    //     // massive penalties, you might want to return {-1, -1} here too.
+    //     // e.g. if (best_score < -100.0f) return {-1, -1};
+
+    //     return {best_left_idx, best_right_idx};
+    // }
+
     struct EdgeCandidate {
-        float diff; // Contrast strength (amplitude difference)
-        float midpoint; // Sub-pixel location
+        float diff; // Contrast strength
+        float midpoint; // Pixel (or subpixel) location
     };
 
     std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
@@ -672,14 +1073,26 @@ class FindTubeMainFrame : public wxFrame {
         if ( n < 3 )
             return {-1, -1};
 
-        // 1. Preprocessing & Normalization
-        std::vector<float> profile = cols;
-        // if ( invert_contrast ) {
-        //     for ( float& val : profile )
-        //         val = -val;
-        // }
+        const int   center     = n / 2;
+        const float MAX_OFFSET = 0.45f * n; // reject far-border edges
+        //const float CENTER_W   = 0.6f; // center bias weight
 
-        float              min_val = *std::min_element(profile.begin( ), profile.end( ));
+        auto spatially_valid = [&](float mid) {
+            return std::abs(mid - center) <= MAX_OFFSET;
+        };
+
+        // ------------------------------------------------------------
+        // 1. Preprocessing
+        // ------------------------------------------------------------
+        std::vector<float> profile = cols;
+        if ( invert_contrast ) {
+            for ( float& v : profile )
+                v = -v;
+        }
+
+        float min_val = *std::min_element(profile.begin( ), profile.end( ));
+        float max_val = *std::max_element(profile.begin( ), profile.end( ));
+
         std::vector<float> norm(n);
         for ( int i = 0; i < n; ++i )
             norm[i] = profile[i] - min_val;
@@ -689,112 +1102,272 @@ class FindTubeMainFrame : public wxFrame {
         for ( int i = 0; i < n; ++i )
             norm_inv[i] = max_norm - norm[i];
 
-        // 2. Detect Peaks
-        std::vector<int> pos_mids, p_l, p_r;
-        std::vector<int> neg_mids, n_l, n_r;
-        local_maxima_1d(norm, pos_mids, p_l, p_r);
-        local_maxima_1d(norm_inv, neg_mids, n_l, n_r);
+        // ------------------------------------------------------------
+        // 2. Peak Detection
+        // ------------------------------------------------------------
+        std::vector<int> pos_mids, neg_mids;
+        std::vector<int> tmp;
 
-        // Ensure peaks are sorted by their index (left-to-right)
+        local_maxima_1d(norm, pos_mids, tmp, tmp, 0.0f, 0.20f, 10);
+        local_maxima_1d(norm_inv, neg_mids, tmp, tmp, 0.0f, 0.20f, 10);
+
         std::sort(pos_mids.begin( ), pos_mids.end( ));
         std::sort(neg_mids.begin( ), neg_mids.end( ));
 
-        // 3. Classify Candidates into Left (Rising) and Right (Falling) Lists
+        // ------------------------------------------------------------
+        // DEBUG: profile + peaks
+        // ------------------------------------------------------------
+        std::cout << "\n=== PROFILE DEBUG ===\n";
+        for ( int i = 0; i < n; ++i ) {
+            std::cout << i
+                      << " norm=" << norm[i]
+                      << " inv=" << norm_inv[i];
+
+            if ( std::find(pos_mids.begin( ), pos_mids.end( ), i) != pos_mids.end( ) )
+                std::cout << " <-- POS";
+
+            if ( std::find(neg_mids.begin( ), neg_mids.end( ), i) != neg_mids.end( ) )
+                std::cout << " <-- NEG";
+
+            std::cout << "\n";
+        }
+
+        // ------------------------------------------------------------
+        // 3. Gradient (for edge localization)
+        // ------------------------------------------------------------
+        std::vector<float> grad(n, 0.0f);
+        for ( int i = 1; i < n - 1; ++i )
+            grad[i] = 0.5f * (norm[i + 1] - norm[i - 1]);
+        grad[0]     = grad[1];
+        grad[n - 1] = grad[n - 2];
+
+        // ------------------------------------------------------------
+        // 4. Build Edge Candidates
+        // ------------------------------------------------------------
         std::vector<EdgeCandidate> left_candidates;
         std::vector<EdgeCandidate> right_candidates;
 
         for ( int pos : pos_mids ) {
-            // --- Left Wall (Rising: Neg -> Pos) ---
+
+            // ---- LEFT EDGE (NEG -> POS) ----
             int   best_neg_left = -1;
-            float min_dist_left = std::numeric_limits<float>::max( );
+            float best_contrast = -1.0f;
 
             for ( int neg : neg_mids ) {
                 if ( neg < pos ) {
-                    float dist = static_cast<float>(pos - neg);
-                    if ( dist < min_dist_left ) {
-                        min_dist_left = dist;
+                    float c = std::abs(norm[pos] - norm[neg]);
+                    if ( c > best_contrast ) {
+                        best_contrast = c;
                         best_neg_left = neg;
                     }
                 }
             }
+
             if ( best_neg_left != -1 ) {
-                float diff = std::abs(norm[pos] - norm[best_neg_left]);
-                float mid  = (pos + best_neg_left) / 2.0f;
-                left_candidates.push_back({diff, mid});
+                int   lo     = best_neg_left;
+                int   hi     = pos;
+                int   best_k = lo;
+                float best_g = std::fabs(grad[lo]);
+                for ( int k = lo; k <= hi; ++k ) {
+                    float g = std::fabs(grad[k]);
+                    if ( g > best_g ) {
+                        best_g = g;
+                        best_k = k;
+                    }
+                }
+                left_candidates.push_back({best_contrast, (float)best_k});
             }
 
-            // --- Right Wall (Falling: Pos -> Neg) ---
-            int   best_neg_right = -1;
-            float min_dist_right = std::numeric_limits<float>::max( );
+            // ---- RIGHT EDGE (POS -> NEG) ----
+            int best_neg_right = -1;
+            best_contrast      = -1.0f;
 
             for ( int neg : neg_mids ) {
                 if ( neg > pos ) {
-                    float dist = static_cast<float>(neg - pos);
-                    if ( dist < min_dist_right ) {
-                        min_dist_right = dist;
+                    float c = std::abs(norm[pos] - norm[neg]);
+                    if ( c > best_contrast ) {
+                        best_contrast  = c;
                         best_neg_right = neg;
                     }
                 }
             }
+
             if ( best_neg_right != -1 ) {
-                float diff = std::abs(norm[pos] - norm[best_neg_right]);
-                float mid  = (pos + best_neg_right) / 2.0f;
-                right_candidates.push_back({diff, mid});
+                int   lo     = pos;
+                int   hi     = best_neg_right;
+                int   best_k = lo;
+                float best_g = std::fabs(grad[lo]);
+                for ( int k = lo; k <= hi; ++k ) {
+                    float g = std::fabs(grad[k]);
+                    if ( g > best_g ) {
+                        best_g = g;
+                        best_k = k;
+                    }
+                }
+                right_candidates.push_back({best_contrast, (float)best_k});
             }
         }
 
-        // 4. Sort candidates by strength to prioritize better edges during debug
-        auto sort_fn = [](const EdgeCandidate& a, const EdgeCandidate& b) {
-            return a.diff > b.diff;
-        };
-        std::sort(left_candidates.begin( ), left_candidates.end( ), sort_fn);
-        std::sort(right_candidates.begin( ), right_candidates.end( ), sort_fn);
+        // // ------------------------------------------------------------
+        // // 5A. OPTION C: Center-first selection
+        // // ------------------------------------------------------------
+        // bool  found_center      = false;
+        // float best_center_score = -1e30f;
+        // int   best_l = -1, best_r = -1;
 
-        // 5. Find Best Pair using Specific Scoring Function
+        // std::cout << "\n=== CENTER-FIRST SCORING ===\n";
+
+        // for ( const auto& l : left_candidates ) {
+        //     if ( ! spatially_valid(l.midpoint) || l.midpoint >= center )
+        //         continue;
+
+        //     for ( const auto& r : right_candidates ) {
+        //         if ( ! spatially_valid(r.midpoint) || r.midpoint <= center )
+        //             continue;
+
+        //         float gap = r.midpoint - l.midpoint;
+        //         if ( gap < min_tube_diameter || gap > max_tube_diameter )
+        //             continue;
+
+        //         float center_dist =
+        //                 std::abs(l.midpoint - center) +
+        //                 std::abs(r.midpoint - center);
+
+        //         float score =
+        //                 (l.diff + r.diff) - CENTER_W * center_dist;
+
+        //         std::cout << "L=" << l.midpoint
+        //                   << " R=" << r.midpoint
+        //                   << " gap=" << gap
+        //                   << " contrast=" << (l.diff + r.diff)
+        //                   << " center_dist=" << center_dist
+        //                   << " score=" << score << "\n";
+
+        //         if ( score > best_center_score ) {
+        //             best_center_score = score;
+        //             best_l            = (int)std::round(l.midpoint);
+        //             best_r            = (int)std::round(r.midpoint);
+        //             found_center      = true;
+        //         }
+        //     }
+        // }
+        //
+        // if ( found_center ) {
+        //     std::cout << "\n>>> CENTER-FIRST CHOSEN: "
+        //               << best_l << ", " << best_r << "\n";
+        //     return {best_l, best_r};
+        // }
+
+        // // ------------------------------------------------------------
+        // // 5B. FALLBACK: Global scoring (your original logic)
+        // // ------------------------------------------------------------
+        // float best_score = -1e30f;
+        // int   best_left = -1, best_right = -1;
+
+        // std::cout << "\n=== FALLBACK GLOBAL SCORING ===\n";
+
+        // for ( const auto& l : left_candidates ) {
+        //     for ( const auto& r : right_candidates ) {
+        //         float gap = r.midpoint - l.midpoint;
+        //         if ( gap <= 0 )
+        //             continue;
+
+        //         float score = (l.diff + r.diff) - 0.1f * std::fabs(gap - min_tube_diameter);
+
+        //         std::cout << "L=" << l.midpoint
+        //                   << " R=" << r.midpoint
+        //                   << " gap=" << gap
+        //                   << " score=" << score << "\n";
+
+        //         if ( score > best_score ) {
+        //             best_score = score;
+        //             best_left  = (int)std::round(l.midpoint);
+        //             best_right = (int)std::round(r.midpoint);
+        //         }
+        //     }
+        // }
+
+        // if ( best_left < 0 || best_right < 0 )
+        //     return {-1, -1};
+
+        // std::cout << "\n>>> FALLBACK CHOSEN: "
+        //           << best_left << ", " << best_right << "\n";
+
+        // return {best_left, best_right};
+
+        // 5. Find Best Pair using Improved Scoring Function (CENTER-SOFT + GAP-GAUSSIAN)
+
         float best_score     = -std::numeric_limits<float>::infinity( );
         int   best_left_idx  = -1;
         int   best_right_idx = -1;
 
-        const float IDEAL_GAP           = min_tube_diameter;
-        const float GAP_PENALTY         = 0.1f;
-        const float OUT_OF_RANGE_FACTOR = 10.0f;
+        const float IDEAL_GAP = 0.5f * (min_tube_diameter + max_tube_diameter);
+
+        // ---- TUNABLE PARAMETERS ----
+        const float SIGMA_GAP = 0.25f * (max_tube_diameter - min_tube_diameter);
+        // controls how strict the tube diameter must be
+
+        const float CENTER_W = 0.4f; // soft prior only (do NOT exceed ~0.6)
+
+        const float IMAGE_CENTER = 0.5f * (n - 1);
+
+        std::cout << "\n=== FINAL SCORING ===\n";
 
         for ( const auto& l : left_candidates ) {
             for ( const auto& r : right_candidates ) {
 
-                // Ensure gap is positive and absolute
-                float gap    = std::abs(r.midpoint - l.midpoint);
-                float sumAmp = l.diff + r.diff;
+                float gap = r.midpoint - l.midpoint;
+                if ( gap <= 0.0f )
+                    continue;
 
-                // Base score: Contrast - Deviation from Ideal
-                float score = sumAmp - GAP_PENALTY * std::fabs(gap - IDEAL_GAP);
+                // Hard rejection outside reasonable physical bounds
+                if ( gap < min_tube_diameter || gap > max_tube_diameter )
+                    continue;
 
-                // Apply Out-of-Range Penalties
-                if ( gap < min_tube_diameter ) {
-                    score -= OUT_OF_RANGE_FACTOR * (min_tube_diameter - gap);
-                }
-                else if ( gap > max_tube_diameter ) {
-                    score -= OUT_OF_RANGE_FACTOR * (gap - max_tube_diameter);
-                }
+                // ----------------------------------------------------
+                // 1) Edge strength term
+                // ----------------------------------------------------
+                float contrast = l.diff + r.diff;
 
-                // Update Best
+                // ----------------------------------------------------
+                // 2) Gaussian gap likelihood (KEY FIX)
+                // ----------------------------------------------------
+                float gap_err   = gap - IDEAL_GAP;
+                float gap_score = -(gap_err * gap_err) / (2.0f * SIGMA_GAP * SIGMA_GAP);
+
+                // ----------------------------------------------------
+                // 3) Soft center prior (does NOT dominate)
+                // ----------------------------------------------------
+                float mid_center     = 0.5f * (l.midpoint + r.midpoint);
+                float center_dist    = std::abs(mid_center - IMAGE_CENTER);
+                float center_penalty = CENTER_W * std::pow(center_dist, 1.5); //std:sqrt
+
+                // ----------------------------------------------------
+                // Final score
+                // ----------------------------------------------------
+                float score = contrast + (gap_score * 2) - center_penalty; //increasing the gap score penalty
+
+                std::cout
+                        << "L=" << (int)std::round(l.midpoint)
+                        << " R=" << (int)std::round(r.midpoint)
+                        << " gap=" << gap
+                        << " contrast=" << contrast
+                        << " gap_score=" << gap_score
+                        << " center_dist=" << center_dist
+                        << " score=" << score
+                        << "\n";
+
                 if ( score > best_score ) {
                     best_score     = score;
-                    best_left_idx  = static_cast<int>(std::round(l.midpoint));
-                    best_right_idx = static_cast<int>(std::round(r.midpoint));
+                    best_left_idx  = (int)std::round(l.midpoint);
+                    best_right_idx = (int)std::round(r.midpoint);
                 }
             }
         }
 
-        // 6. Return Result
-        // If score is still negative infinity, no valid pairs existed
-        if ( best_score == -std::numeric_limits<float>::infinity( ) ) {
-            return {-1, -1};
-        }
-
-        // Optional sanity check: If the best score is still incredibly low due to
-        // massive penalties, you might want to return {-1, -1} here too.
-        // e.g. if (best_score < -100.0f) return {-1, -1};
+        std::cout << "\n>>> CHOSEN: L=" << best_left_idx
+                  << " R=" << best_right_idx
+                  << " score=" << best_score << "\n";
 
         return {best_left_idx, best_right_idx};
     }
@@ -1351,11 +1924,11 @@ class FindTubeMainFrame : public wxFrame {
             if ( do_align_FT )
                 AlignImageFT(slice_image, pixel_size);
 
-            if ( lp_res > 0.0 ) {
-                slice_image.ForwardFFT( );
-                slice_image.GaussianLowPassFilter((float)((pixel_size * 2.0) / lp_res));
-                slice_image.BackwardFFT( );
-            }
+            // if ( lp_res > 0.0 ) {
+            //     slice_image.ForwardFFT( );
+            //     slice_image.GaussianLowPassFilter((float)((pixel_size * 2.0) / lp_res));
+            //     slice_image.BackwardFFT( );
+            // }
 
             if ( mask_rad_ang > 0 ) {
                 float mask_rad_pix = mask_rad_ang / pixel_size;
