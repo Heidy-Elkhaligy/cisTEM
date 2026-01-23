@@ -91,6 +91,8 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
     ref_star_file.ReadFromcisTEMStarFile(reference_star_filename);
 
     long  number_of_input_images = my_input_images.ReturnNumberOfSlices( );
+    int   num_of_models          = 4;
+    long  number_of_base_images  = number_of_input_images / num_of_models;
     Image my_image;
     //Added new as OMP was causing problems when writing images to a file that is not opened and have set dimensions and header information
     MRCFile removed_images_output("removed_images.mrc", true);
@@ -122,6 +124,7 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
     cisTEMParameterLine input_parameters;
     cisTEMParameterLine reference_parameters;
     cisTEMParameters    output_params;
+
     // setup parameters for the output star file
     output_params.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | IMAGE_IS_ACTIVE | PSI | THETA | PHI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | OCCUPANCY | LOGP | SIGMA | SCORE | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y | ASSIGNED_SUBSET);
     output_params.PreallocateMemoryAndBlank(number_of_input_images); //in case all had occupance > threshold
@@ -131,13 +134,15 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
     output_removed_params.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | IMAGE_IS_ACTIVE | PSI | THETA | PHI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | OCCUPANCY | LOGP | SIGMA | SCORE | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y | ASSIGNED_SUBSET);
     output_removed_params.PreallocateMemoryAndBlank(number_of_input_images); //in case all had occupance > threshold
 
+    cisTEMParameterLine input_parameters_r;
+    cisTEMParameterLine reference_parameters_r;
+
     long         new_counter           = 0;
     long         removed_image_counter = 0;
     ProgressBar* my_progress           = new ProgressBar(number_of_input_images);
 
     // main loop
-    for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
-
+    for ( long image_counter = 0; image_counter < number_of_base_images; image_counter++ ) { //number_of_input_images
         input_parameters     = input_star_file.ReturnLine(image_counter); // the star file numbering is 0 indexed!!
         reference_parameters = ref_star_file.ReturnLine(image_counter);
 
@@ -145,18 +150,22 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
         float input_phi   = angle_within360(input_parameters.phi);
         float input_psi   = angle_within360(input_parameters.psi);
         float input_theta = input_parameters.theta;
+        float ref_phi     = angle_within360(reference_parameters.phi); // do I need angle_within360??
+        float ref_psi     = reference_parameters.psi;
+        float ref_theta   = reference_parameters.theta;
 
-        // compute adjusted reference euler angles (use adj_ref_phi for comparison)
-        float          adj_ref_phi   = 0.0f;
-        float          adj_ref_theta = 0.0f;
-        float          adj_ref_psi   = 0.0f;
-        RotationMatrix temp_matrix;
-        temp_matrix.SetToEulerRotation(reference_parameters.phi, reference_parameters.theta, reference_parameters.psi);
-        temp_matrix.ConvertToValidEulerAngles(adj_ref_phi, adj_ref_theta, adj_ref_psi); // Is this needed?
-        adj_ref_phi = angle_within360(adj_ref_phi); // make sure adjusted phi is in [0,360)
+        // // compute adjusted reference euler angles (use adj_ref_phi for comparison)
+        // float          adj_ref_phi   = 0.0f;
+        // float          adj_ref_theta = 0.0f;
+        // float          adj_ref_psi   = 0.0f;
+        // RotationMatrix temp_matrix;
+        // temp_matrix.SetToEulerRotation(reference_parameters.phi, reference_parameters.theta, reference_parameters.psi);
+        // temp_matrix.ConvertToValidEulerAngles(adj_ref_phi, adj_ref_theta, adj_ref_psi); // Is this needed?
+        // adj_ref_phi = angle_within360(adj_ref_phi); // make sure adjusted phi is in [0,360)
 
         // smallest signed difference (wrap-aware)
-        float diff = angle_difference(input_phi, adj_ref_phi);
+        //float diff = angle_difference(input_phi, adj_ref_phi);
+        float diff = angle_difference(input_phi, ref_phi);
 
         // For backwards-compatibility with your "removed" debug logic we still check +/-90 and +/-270 offsets and save them to removed list,
         // BUT we DO NOT accept +180 or +90 as valid matches for keeping. We only keep particles whose input_phi is within angular_range of adj_ref_phi.
@@ -171,8 +180,8 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
                 my_image.WriteSlice(&my_output_images, new_counter + 1);
 
                 // Print the values for debugging as requested
-                wxPrintf("KEPT (image %li): reference_phi(raw) = %f, input_phi = %f, adj_ref_phi = %f\n",
-                         image_counter + 1, reference_parameters.phi, input_phi, adj_ref_phi);
+                wxPrintf("KEPT (image %li): reference_phi(raw) = %f, input_phi = %f, ref_phi = %f\n",
+                         image_counter + 1, reference_parameters.phi, input_phi, ref_phi);
 
                 // save the parameter information of the image into the new star file
                 // (kept same long assignments as you requested)
@@ -212,8 +221,8 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
             }
             else {
                 // Not kept. For debugging: check +/-90 & +/-270 offsets and save those into removed list, as in original code.
-                float diff_90_offset  = angle_difference(input_phi, adj_ref_phi + 90.0f);
-                float diff_270_offset = angle_difference(input_phi, adj_ref_phi + 270.0f);
+                float diff_90_offset  = angle_difference(input_phi, ref_phi + 90.0f);
+                float diff_270_offset = angle_difference(input_phi, ref_phi + 270.0f);
 
                 if ( fabs(diff_90_offset) <= angular_range || fabs(diff_270_offset) <= angular_range ) {
                     my_image.ReadSlice(&my_input_images, image_counter + 1);
@@ -225,13 +234,13 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
                                        input_parameters.phi,
                                        reference_parameters.phi,
                                        angular_difference,
-                                       adj_ref_phi,
+                                       ref_phi,
                                        input_psi,
                                        reference_parameters.psi,
-                                       adj_ref_psi,
+                                       ref_psi,
                                        input_theta,
                                        reference_parameters.theta,
-                                       adj_ref_theta});
+                                       ref_theta});
 
                     output_removed_params.all_parameters[removed_image_counter].position_in_stack                  = removed_image_counter + 1;
                     output_removed_params.all_parameters[removed_image_counter].image_is_active                    = input_parameters.image_is_active;
@@ -275,8 +284,8 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
                 my_image.WriteSlice(&my_output_images, new_counter + 1);
 
                 // Print the values for debugging as requested
-                wxPrintf("KEPT (image %li): reference_phi(raw) = %f, input_phi = %f, adj_ref_phi = %f\n",
-                         image_counter + 1, reference_parameters.phi, input_phi, adj_ref_phi);
+                wxPrintf("KEPT (image %li): reference_phi(raw) = %f, input_phi = %f, ref_phi = %f\n",
+                         image_counter + 1, reference_parameters.phi, input_phi, ref_phi);
 
                 // save the parameter information of the image into the new star file
                 output_params.all_parameters[new_counter].position_in_stack                  = new_counter + 1;
@@ -312,11 +321,71 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
                 output_params.all_parameters[new_counter].assigned_subset = input_parameters.assigned_subset; // There is no assigned subset and we need to keep the saved assigned subset as is to ensure that no 2 particles are in the same group even after filteration
 
                 new_counter++;
+
+                for ( size_t r = 1; r < num_of_models; r++ ) {
+                    input_parameters_r     = input_star_file.ReturnLine((image_counter + (r * number_of_base_images))); // the star file numbering is 0 indexed!!
+                    reference_parameters_r = ref_star_file.ReturnLine((image_counter + (r * number_of_base_images)));
+
+                    // input angles normalized into [0,360)
+                    float input_phi_r   = angle_within360(input_parameters_r.phi);
+                    float input_psi_r   = angle_within360(input_parameters_r.psi);
+                    float input_theta_r = input_parameters_r.theta;
+                    float ref_phi_r     = angle_within360(reference_parameters_r.phi); // do I need angle_within360??
+                    float ref_psi_r     = reference_parameters_r.psi;
+                    float ref_theta_r   = reference_parameters_r.theta;
+
+                    float diff_r = angle_difference(input_phi_r, ref_phi_r);
+
+                    if ( fabs(diff_r) <= angular_range ) {
+
+                        my_image.ReadSlice(&my_input_images, ((image_counter + 1) + (r * number_of_base_images)));
+                        my_image.WriteSlice(&my_output_images, new_counter + 1);
+
+                        // Print the values for debugging as requested
+                        wxPrintf("KEPT (image %li): reference_phi(raw) = %f, input_phi = %f, ref_phi = %f\n",
+                                 ((image_counter + 1) + (r * number_of_base_images)), reference_parameters_r.phi, input_phi_r, ref_phi_r);
+
+                        // save the parameter information of the image into the new star file
+                        output_params.all_parameters[new_counter].position_in_stack                  = new_counter + 1;
+                        output_params.all_parameters[new_counter].image_is_active                    = input_parameters_r.image_is_active;
+                        output_params.all_parameters[new_counter].psi                                = input_parameters_r.psi;
+                        output_params.all_parameters[new_counter].theta                              = input_parameters_r.theta;
+                        output_params.all_parameters[new_counter].phi                                = input_parameters_r.phi;
+                        output_params.all_parameters[new_counter].x_shift                            = input_parameters_r.x_shift;
+                        output_params.all_parameters[new_counter].y_shift                            = input_parameters_r.y_shift;
+                        output_params.all_parameters[new_counter].defocus_1                          = input_parameters_r.defocus_1;
+                        output_params.all_parameters[new_counter].defocus_2                          = input_parameters_r.defocus_2;
+                        output_params.all_parameters[new_counter].defocus_angle                      = input_parameters_r.defocus_angle;
+                        output_params.all_parameters[new_counter].phase_shift                        = input_parameters_r.phase_shift;
+                        output_params.all_parameters[new_counter].occupancy                          = input_parameters_r.occupancy;
+                        output_params.all_parameters[new_counter].logp                               = input_parameters_r.logp;
+                        output_params.all_parameters[new_counter].sigma                              = input_parameters_r.sigma;
+                        output_params.all_parameters[new_counter].score                              = input_parameters_r.score;
+                        output_params.all_parameters[new_counter].score_change                       = input_parameters_r.score_change;
+                        output_params.all_parameters[new_counter].pixel_size                         = input_parameters_r.pixel_size;
+                        output_params.all_parameters[new_counter].microscope_voltage_kv              = input_parameters_r.microscope_voltage_kv;
+                        output_params.all_parameters[new_counter].microscope_spherical_aberration_mm = input_parameters_r.microscope_spherical_aberration_mm;
+                        output_params.all_parameters[new_counter].amplitude_contrast                 = input_parameters_r.amplitude_contrast;
+                        output_params.all_parameters[new_counter].beam_tilt_x                        = input_parameters_r.beam_tilt_x;
+                        output_params.all_parameters[new_counter].beam_tilt_y                        = input_parameters_r.beam_tilt_y;
+                        output_params.all_parameters[new_counter].image_shift_x                      = input_parameters_r.image_shift_x;
+                        output_params.all_parameters[new_counter].image_shift_y                      = input_parameters_r.image_shift_y;
+                        if ( input_parameters.position_in_stack % 2 == 1 ) { // on purpose left as input_parameters not input_parameters_r as I want all the RASTR particles from the same image to be in the same group
+                            input_parameters_r.assigned_subset = 1; // Odd particle number
+                        }
+                        else {
+                            input_parameters_r.assigned_subset = 2; // Even particle number
+                        }
+                        output_params.all_parameters[new_counter].assigned_subset = input_parameters_r.assigned_subset; // There is no assigned subset and we need to keep the saved assigned subset as is to ensure that no 2 particles are in the same group even after filteration
+
+                        new_counter++;
+                    }
+                }
             }
             else {
                 // Not kept. For debugging: check +/-90 & +/-270 offsets and save those into removed list, as in original code.
-                float diff_90_offset  = angle_difference(input_phi, adj_ref_phi + 90.0f);
-                float diff_270_offset = angle_difference(input_phi, adj_ref_phi + 270.0f);
+                float diff_90_offset  = angle_difference(input_phi, ref_phi + 90.0f);
+                float diff_270_offset = angle_difference(input_phi, ref_phi + 270.0f);
 
                 if ( fabs(diff_90_offset) <= angular_range || fabs(diff_270_offset) <= angular_range ) {
                     my_image.ReadSlice(&my_input_images, image_counter + 1);
@@ -328,13 +397,13 @@ bool apply_RASTR_phi_constraints::DoCalculation( ) {
                                        input_parameters.phi,
                                        reference_parameters.phi,
                                        angular_difference,
-                                       adj_ref_phi,
+                                       ref_phi,
                                        input_psi,
                                        reference_parameters.psi,
-                                       adj_ref_psi,
+                                       ref_psi,
                                        input_theta,
                                        reference_parameters.theta,
-                                       adj_ref_theta});
+                                       ref_theta});
 
                     output_removed_params.all_parameters[removed_image_counter].position_in_stack                  = removed_image_counter + 1;
                     output_removed_params.all_parameters[removed_image_counter].image_is_active                    = input_parameters.image_is_active;
