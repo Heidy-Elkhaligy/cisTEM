@@ -306,7 +306,9 @@ bin_PROGRAMS =  cisTEM_job_control \
                 create_average_power_spectrum \
                 analyze_average_power_spectrum \
                 calculate_autocorrelation \
-                abel_transform
+                abel_transform \
+                randomize_rastr_phi \
+                analyze_images
 
 
 
@@ -849,6 +851,12 @@ unblur_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 # unblur_gpu_LDADD    = libgpucore.a libcore.a $(WX_LIBS_BASE) $(MKL_LIBS) $(CUDA_LIBS)
 # endif
 
+analyze_images_SOURCES  = programs/analyze_images/analyze_images.cpp
+analyze_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+analyze__images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+analyze_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+analyze_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
 applyctf_SOURCES  = programs/applyctf/applyctf.cpp
 applyctf_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 applyctf_CPPFLAGS = $(WX_CPPFLAGS_BASE)
@@ -1175,6 +1183,11 @@ abel_transform_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 abel_transform_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 abel_transform_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
+randomize_rastr_phi_SOURCES  = programs/randomize_rastr_phi/randomize_rastr_phi.cpp
+randomize_rastr_phi_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+randomize_rastr_phi_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+randomize_rastr_phi_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+randomize_rastr_phi_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 find_tube_diameters_SOURCES  = programs/find_tube_diameters/find_tube_diameters.cpp gui/PlotCurvePanel.cpp gui/mathplot.cpp
 find_tube_diameters_CXXFLAGS = $(WX_CPPFLAGS)
@@ -1296,23 +1309,6 @@ convert_eer_to_mrc_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 convert_eer_to_mrc_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 convert_eer_to_mrc_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
-helical_rotational_average_SOURCES  = programs/helical_rotational_average/helical_rotational_average.cpp
-helical_rotational_average_CXXFLAGS = $(WX_CPPFLAGS_BASE)
-helical_rotational_average_CPPFLAGS = $(WX_CPPFLAGS_BASE)
-helical_rotational_average_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
-helical_rotational_average_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
-
-align_classaverage_tubes_SOURCES  = programs/align_classaverage_tubes/align_classaverage_tubes.cpp
-align_classaverage_tubes_CXXFLAGS = $(WX_CPPFLAGS_BASE)
-align_classaverage_tubes_CPPFLAGS = $(WX_CPPFLAGS_BASE)
-align_classaverage_tubes_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
-align_classaverage_tubes_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
-
-extract_aligned_classaverage_images_SOURCES  = programs/extract_aligned_classaverage_images/extract_aligned_classaverage_images.cpp
-extract_aligned_classaverage_images_CXXFLAGS = $(WX_CPPFLAGS_BASE)
-extract_aligned_classaverage_images_CPPFLAGS = $(WX_CPPFLAGS_BASE)
-extract_aligned_classaverage_images_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
-extract_aligned_classaverage_images_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 helical_rotational_average_SOURCES  = programs/helical_rotational_average/helical_rotational_average.cpp
 helical_rotational_average_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 helical_rotational_average_CPPFLAGS = $(WX_CPPFLAGS_BASE)
