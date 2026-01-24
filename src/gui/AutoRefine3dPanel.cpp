@@ -854,8 +854,8 @@ void AutoRefinementManager::BeginRefinementCycle( ) {
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].phi = global_random_number_generator.GetUniformRandom( ) * 180.0;
             // input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].theta           = global_random_number_generator.GetUniformRandom( ) * 180.0;
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].theta = theta_start_local + (fabsf(global_random_number_generator.GetUniformRandom( )) * (theta_max_local - theta_start_local));
-            // input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].psi             = global_random_number_generator.GetUniformRandom( ) * 180.0;
-            input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].psi = dist(gen) ? 270 : 90;
+            input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].psi   = global_random_number_generator.GetUniformRandom( ) * 180.0;
+            //input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].psi = dist(gen) ? 270 : 90;
 
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].xshift          = 0;
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[particle_counter].yshift          = 0;

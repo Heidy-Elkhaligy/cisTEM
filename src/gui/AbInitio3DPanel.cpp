@@ -1023,8 +1023,8 @@ void AbInitioManager::BeginRefinementCycle( ) {
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].phi = global_random_number_generator.GetUniformRandom( ) * 180.0;
             // input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = rad_2_deg(acosf(2.0f * fabsf(global_random_number_generator.GetUniformRandom( )) - 1.0f));
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = theta_start_local + (fabsf(global_random_number_generator.GetUniformRandom( )) * (theta_max_local - theta_start_local));
-            // input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].psi   = global_random_number_generator.GetUniformRandom( ) * 180.0;
-            input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].psi = dist(gen) ? 270 : 90;
+            input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].psi   = global_random_number_generator.GetUniformRandom( ) * 180.0;
+            //input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].psi = dist(gen) ? 270 : 90;
 
             //input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].phi = global_random_number_generator.GetUniformRandom() * 180.0;
             //input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = global_random_number_generator.GetUniformRandom() * 180.0;
