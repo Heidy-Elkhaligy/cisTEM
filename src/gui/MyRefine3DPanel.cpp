@@ -660,7 +660,7 @@ void MyRefine3DPanel::OnUpdateUI(wxUpdateUIEvent& event) {
             }
 
             if ( ExpertToggleButton->GetValue( ) == true ) {
-                if ( GlobalRefinementRadio->GetValue( ) == false ) {
+                if ( GlobalRefinementRadio->GetValue( ) == false ) { // then we are in a local refinement run
                     //GlobalResolutionLimitStaticText->Enable(false);
                     //	GlobalResolutionLimitTextCtrl->Enable(false);
                     GlobalMaskRadiusStaticText->Enable(false);
@@ -669,10 +669,10 @@ void MyRefine3DPanel::OnUpdateUI(wxUpdateUIEvent& event) {
                     NumberToRefineStaticText->Enable(false);
                     AngularStepTextCtrl->Enable(false);
                     AngularStepStaticText->Enable(false);
-                    SearchRangeXTextCtrl->Enable(false);
-                    SearchRangeXStaticText->Enable(false);
-                    SearchRangeYTextCtrl->Enable(false);
-                    SearchRangeYStaticText->Enable(false);
+                    SearchRangeXTextCtrl->Enable(true); // needs to be true for restricting the filaments search
+                    SearchRangeXStaticText->Enable(true); // needs to be true for restricting the filaments search
+                    SearchRangeYTextCtrl->Enable(true); // needs to be true for restricting the filaments search
+                    SearchRangeYStaticText->Enable(true); // needs to be true for restricting the filaments search
                     AlsoRefineInputStaticText1->Enable(false);
                     AlsoRefineInputYesRadio->Enable(false);
                     AlsoRefineInputNoRadio->Enable(false);
