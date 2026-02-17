@@ -1494,7 +1494,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         divide_by_ctf_sum_of_squares(sum_images_after_aln[bin_index], (*CTFSumOfSquaresFinal)[bin_index]);
         //sum_images_after_aln[bin_index].GaussianLowPassFilter((pixel_size * 2) / 150);
         sum_images_after_aln[bin_index].BackwardFFT( );
-        //sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("final_sum_image_gaussian_before_averaging.mrc", bin_index + 1);
+        sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("final_sum_image.mrc", bin_index + 1);
 
         // Vertically summing the image to ensure cross-correlation doesn't correlate by mistake to a wrong area if input images are pre-aligned
         sum_image_direction(&sum_whiten_images[bin_index], 2);
@@ -1765,6 +1765,8 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         image_output_params.WriteTocisTEMStarFile("updated_rotation_parameters.star");
     }
     else {
+        // DO I NEED TO SAVE THE NORMAL NOT WHITENED AZIMUTHAL AVERAGE AND ITS PROJECTED MASKED VERSION ????
+        // ESPECIALLY IT SEEMS THAT WHITENING MAKE CHANGES TO HOW THE AZIMUTHAL AVERAGE LOOK IN IMAGES
         // RUN THIS ON SINGLE THREAD IS BETTER
 //Image azimuthal_average_slice;
 #pragma omp parallel for schedule(dynamic, 1) num_threads(std::min(bins_count, max_threads)) default(none) shared(SPOT_RASTR, RASTR, prepare_projections_progress, current_image, bins_count, sum_whiten_images, model_volume, my_masked_volume, my_mask, input_3d, masked_3d, my_output_sum_image_filename,            \
@@ -2258,18 +2260,27 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // Here we keep only 45 degrees as in Relion project they project the masked model (as is) without affecting the mask position around phi, but in cisTEM the phi position gets affected when we do ExtractSlice
         auto random_phi_angles = GenerateRandomAnglesWithinRange(number_of_input_images, 360.0);
 
+        ///////////////////////////////////////////////////////////////////////
+        ////// Do I need to do new after I joined the star file loop with the main RASTR subtraction loop????
+        //////////////////////////////////////////////////////////////////////////////
+
         // This is needed to adjust for extra shift happening in ExtractSlice
         adjusted_x_shifts = new float[number_of_input_images]( );
         adjusted_y_shifts = new float[number_of_input_images]( );
 
         RASTR_adjusted_x_shifts = new float[number_of_input_images * number_of_models]( );
         RASTR_adjusted_y_shifts = new float[number_of_input_images * number_of_models]( );
+
+        float RASTR_adjusted_center_x_shifts[number_of_input_images];
+        float RASTR_adjusted_center_y_shifts[number_of_input_images];
+
+        float RASTR_adjusted_center_aligned_x_shifts[number_of_input_images];
+        float RASTR_adjusted_center_aligned_y_shifts[number_of_input_images];
         //Will make the outer loop on one thread but inner loop multi-threaded to ensure the sequential processing of the models!
         //mask_RASTR_projection, mask_RASTR_projection_centered,
         for ( long model_counter = 0; model_counter < number_of_models; model_counter++ ) {
-#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, best_psi_value, best_x_shift_value, number_of_models, input_3d, mask_upweighted, image_stack, model_counter, noise_power_spectrum, mask_falloff, masked_upweighted_output, random_phi_angles, mask_RASTR_projection, mask_RASTR_projection_centered, \
-                                                                                            ctf_parameters_stack, max_threads, diameter_bins, bins_count, current_image, mask_subtract_progress, align_upweighted, RASTR_projections_output, use_memory, adjusted_x_shifts, adjusted_y_shifts,                                                                                          \
-                                                                                            input_ctf_values_from_star_file, current_ctf, pixel_size, padding_factor, masked_3d, x_mask_center, y_mask_center, x_dim, y_dim, z_mask_center, RASTR_adjusted_x_shifts, RASTR_adjusted_y_shifts, mask_projection, input_mask, filter_radius, outside_weight, cosine_edge,                  \
+#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, best_psi_value, best_x_shift_value, number_of_models, input_3d, mask_upweighted, image_stack, model_counter, noise_power_spectrum, mask_falloff, masked_upweighted_output, random_phi_angles, mask_RASTR_projection, mask_RASTR_projection_centered, RASTR_adjusted_center_aligned_x_shifts, RASTR_adjusted_center_aligned_y_shifts,                                                                                                                                                                   \
+                                                                                            ctf_parameters_stack, max_threads, diameter_bins, bins_count, current_image, mask_subtract_progress, align_upweighted, RASTR_projections_output, use_memory, adjusted_x_shifts, adjusted_y_shifts, RASTR_adjusted_center_x_shifts, RASTR_adjusted_center_y_shifts, input_ctf_values_from_star_file, current_ctf, pixel_size, padding_factor, masked_3d, x_mask_center, y_mask_center, x_dim, y_dim, z_mask_center, RASTR_adjusted_x_shifts, RASTR_adjusted_y_shifts, mask_projection, input_mask, filter_radius, outside_weight, cosine_edge, \
                                                                                             center_upweighted, sphere_mask_radius, RASTR_output_filename, my_output_RASTR_filename, projection_volume_3d, masked_projection_volume_3d) private(phi, projection_3d, projection_image, padded_projection_image, my_parameters_for_subtraction, mask_projection_image, padded_mask_projection_image, mask_parameters, subtracted_RASTR_image, centered_upweighted_image, unmasked_projection_image, unmasked_padded_projection_image, unmasked_projection_3d)
 
             for ( long subtraction_image_counter = 0; subtraction_image_counter < number_of_input_images; subtraction_image_counter++ ) {
@@ -2320,15 +2331,15 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
                 phi = model_counter * 360.0 / number_of_models;
 
-                // use the random phi generated per image and keep adding the reference phi to it so each image has its own random starting phi
-                float random_phi       = random_phi_angles[subtraction_image_counter];
-                float RASTR_random_phi = angle_within360(phi + random_phi);
+                // // use the random phi generated per image and keep adding the reference phi to it so each image has its own random starting phi
+                // float random_phi       = random_phi_angles[subtraction_image_counter];
+                // float RASTR_random_phi = angle_within360(phi + random_phi);
 
                 // Extracting a slice from a 3D volume
                 // angles and shifts are negative to align projection with original input stack
                 // use the phi based on the number of models
 
-                my_parameters_for_subtraction.Init(RASTR_random_phi, 90.0, 90.0 - best_psi_value[subtraction_image_counter], 0.0, 0.0); //phi
+                my_parameters_for_subtraction.Init(phi, 90.0, 90.0 - best_psi_value[subtraction_image_counter], 0.0, 0.0); //phi
 
                 for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
                     if ( diameter_bins[subtraction_image_counter] == bin_index ) { // This should catch any diameter within the range
@@ -2438,12 +2449,12 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 // if we want to mask the final upweighted regions
                 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                 if ( mask_upweighted ) {
-                    // If we will mask the upweighted regions then we need to determine the location of the center of the upweighted region in the image
+                    // If we will mask the upweighted regions then we need to determine the location of the center of the upweighted region in the image (similar to the center of the sphere mask)
                     RotationMatrix RASTR_temp_matrix;
                     float          RASTR_rotated_x, RASTR_rotated_y, RASTR_rotated_z;
                     // // generate the full rotation matrix
                     // Note: reversing order and negating angles to apply the inverse rotation
-                    RASTR_temp_matrix.SetToEulerRotation(-(90.0 - best_psi_value[subtraction_image_counter]), -90.0, -RASTR_random_phi); //-phi
+                    RASTR_temp_matrix.SetToEulerRotation(-(90.0 - best_psi_value[subtraction_image_counter]), -90.0, -phi); //-phi
 
                     //Maybe instead of using the x_mask_center use the adjusted_x_shift which is for the center of the tube instead of center of the mask to calculate the correct shift???
                     RASTR_temp_matrix.RotateCoords((x_mask_center - current_image.physical_address_of_box_center_x), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), RASTR_rotated_x, RASTR_rotated_y, RASTR_rotated_z);
@@ -2454,7 +2465,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
                     // wxPrintf("original mask location in x, y, z at phi %f and psi %f are %i, %i, %i and adjusted RASTR location are %f, %f, %f \n", -phi, -(90.0 - best_psi_value[subtraction_image_counter]), (x_mask_center - current_image.physical_address_of_box_center_x), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), -RASTR_rotated_x, -RASTR_rotated_y, -RASTR_rotated_z);
                     float average = subtracted_RASTR_image.ReturnAverageOfRealValues( );
-                    mask_parameters.Init(RASTR_random_phi, 90.0, 90.0 - best_psi_value[subtraction_image_counter], 0.0, 0.0);
+                    mask_parameters.Init(phi, 90.0, 90.0 - best_psi_value[subtraction_image_counter], 0.0, 0.0); //phi
 
                     mask_projection_image.Allocate(x_dim, y_dim, false); // false as it is in FS
                     padded_mask_projection_image.Allocate(padding_factor * x_dim, padding_factor * y_dim, false);
@@ -2513,8 +2524,50 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     subtracted_RASTR_image.WriteSlice(&masked_upweighted_output, current_counter + 1);
                     // if user specified a masked upweighted region should be generated then it can be centered (not aligned) or (aligned not centered) or (centered and aligned) or (saved as is not aligned not centered)
                     // if the user specified that the upweighted regions should be centered before saving them
+                    // Here we need to center the upweighted region to the center of the image not the center of the tube
+                    // we need to do further adjutments to the calculated shift
+                    RotationMatrix RASTR_center_matrix;
+                    float          RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z;
+
+                    // // generate the full rotation matrix
+                    // Note: reversing order and negating angles to apply the inverse rotation
+                    RASTR_center_matrix.SetToEulerRotation(-(90.0 - best_psi_value[subtraction_image_counter]), -90.0, -phi); //-phi
+
+                    //Maybe instead of using the x_mask_center use the adjusted_x_shift which is for the center of the tube instead of center of the mask to calculate the correct shift???
+                    // RASTR_center_matrix.RotateCoords((x_mask_center - adjusted_x_shifts[image_counter] - current_image.physical_address_of_box_center_y), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z);
+                    RASTR_center_matrix.RotateCoords((adjusted_x_shifts[subtraction_image_counter]), (0.0), (0.0), RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z);
+
+                    // center the masked upweighted regions to the center of the image
+                    RASTR_adjusted_center_x_shifts[subtraction_image_counter] = RASTR_center_rotated_x;
+                    RASTR_adjusted_center_y_shifts[subtraction_image_counter] = RASTR_center_rotated_y;
+
+                    RotationMatrix RASTR_center_aligned_matrix;
+                    float          RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z;
+
+                    // // generate the full rotation matrix
+                    // Note: reversing order and negating angles to apply the inverse rotation
+                    RASTR_center_aligned_matrix.SetToEulerRotation(-90.0, -90.0, -phi); //-phi
+
+                    //Maybe instead of using the x_mask_center use the adjusted_x_shift which is for the center of the tube instead of center of the mask to calculate the correct shift???
+                    // RASTR_center_matrix.RotateCoords((x_mask_center - adjusted_x_shifts[image_counter] - current_image.physical_address_of_box_center_y), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z);
+
+                    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                    /////////////////////////////////////////////////////////// IMPORTANT ///////////////////////////////////////////////////////////////////
+                    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                    // This line is working but center the aligend images to the position of the mask in 3d
+                    // can subtracting the RASTR adj shift from the (x_mask_center - current_image.physical_address_of_box_center) vertically center the aligned upweighted regions to the center
+                    //RASTR_center_aligned_matrix.RotateCoords((adjusted_x_shifts[subtraction_image_counter]), (0.0), (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
+                    RASTR_center_aligned_matrix.RotateCoords((RASTR_adjusted_x_shifts[subtraction_image_counter]), (0.0), (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
+                    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+                    // center the masked upweighted regions to the center of the image
+                    RASTR_adjusted_center_aligned_x_shifts[subtraction_image_counter] = RASTR_center_aligned_rotated_x;
+                    RASTR_adjusted_center_aligned_y_shifts[subtraction_image_counter] = RASTR_center_aligned_rotated_y;
+
                     if ( center_upweighted == true && align_upweighted == false ) {
-                        subtracted_RASTR_image.PhaseShift(RASTR_adjusted_x_shifts[current_counter], RASTR_adjusted_y_shifts[current_counter]);
+                        //subtracted_RASTR_image.PhaseShift(RASTR_adjusted_x_shifts[current_counter], RASTR_adjusted_y_shifts[current_counter]);
+                        subtracted_RASTR_image.PhaseShift(RASTR_adjusted_center_x_shifts[subtraction_image_counter], RASTR_adjusted_center_y_shifts[subtraction_image_counter]); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
 
 #pragma omp critical
                         subtracted_RASTR_image.WriteSlice(&my_output_RASTR_filename, current_counter + 1);
@@ -2528,8 +2581,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     else if ( (align_upweighted == true && center_upweighted == true) ) {
                         subtracted_RASTR_image.Rotate2DInPlace(best_psi_value[subtraction_image_counter], FLT_MAX);
 
-                        subtracted_RASTR_image.PhaseShift(adjusted_x_shifts[current_counter], 0.0); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
-
+                        //subtracted_RASTR_image.PhaseShift(adjusted_x_shifts[current_counter], 0.0); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
+                        subtracted_RASTR_image.PhaseShift(RASTR_adjusted_center_aligned_x_shifts[subtraction_image_counter], RASTR_adjusted_center_aligned_y_shifts[subtraction_image_counter]); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
+                        // should I change the above line to RASTR_adjusted_center_aligned_x_Shifts???
 #pragma omp critical
                         subtracted_RASTR_image.WriteSlice(&my_output_RASTR_filename, current_counter + 1);
                     }
@@ -2577,7 +2631,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // write the parameters file
         cisTEMParameters RASTR_output_params;
 
-        RASTR_output_params.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | IMAGE_IS_ACTIVE | PSI | THETA | PHI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | OCCUPANCY | LOGP | SIGMA | SCORE | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y);
+        RASTR_output_params.parameters_to_write.SetActiveParameters(POSITION_IN_STACK | IMAGE_IS_ACTIVE | PSI | THETA | PHI | X_SHIFT | Y_SHIFT | DEFOCUS_1 | DEFOCUS_2 | DEFOCUS_ANGLE | PHASE_SHIFT | OCCUPANCY | LOGP | SIGMA | SCORE | PIXEL_SIZE | MICROSCOPE_VOLTAGE | MICROSCOPE_CS | AMPLITUDE_CONTRAST | BEAM_TILT_X | BEAM_TILT_Y | IMAGE_SHIFT_X | IMAGE_SHIFT_Y | ASSIGNED_SUBSET);
 
         RASTR_output_params.PreallocateMemoryAndBlank(number_of_input_images * number_of_models);
 
@@ -2588,23 +2642,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
             for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
 
-                // use the random phi generated per image and keep adding the reference phi to it so each image has its own random starting phi
-                float random_phi       = random_phi_angles[image_counter];
-                float RASTR_random_phi = angle_within360(ref_phi + random_phi);
-
-                RotationMatrix RASTR_center_matrix;
-                float          RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z;
-                // // generate the full rotation matrix
-                // Note: reversing order and negating angles to apply the inverse rotation
-                RASTR_center_matrix.SetToEulerRotation(-(90.0 - best_psi_value[image_counter]), -90.0, -RASTR_random_phi); //-phi
-
-                //Maybe instead of using the x_mask_center use the adjusted_x_shift which is for the center of the tube instead of center of the mask to calculate the correct shift???
-                // RASTR_center_matrix.RotateCoords((x_mask_center - adjusted_x_shifts[image_counter] - current_image.physical_address_of_box_center_y), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z);
-                RASTR_center_matrix.RotateCoords((adjusted_x_shifts[image_counter]), (0.0), (0.0), RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z);
-
-                // center the masked upweighted regions to the center
-                float RASTR_adjusted_center_x_shifts = RASTR_center_rotated_x; //negative as this is the shift to return the images back to the center
-                float RASTR_adjusted_center_y_shifts = RASTR_center_rotated_y;
+                // // use the random phi generated per image and keep adding the reference phi to it so each image has its own random starting phi
+                // float random_phi       = random_phi_angles[image_counter];
+                // float RASTR_random_phi = angle_within360(ref_phi + random_phi);
 
                 long current_counter                                                  = number_of_input_images * model_counter + image_counter; // This is for the position in the stack only
                 RASTR_output_params.all_parameters[current_counter].position_in_stack = current_counter + 1;
@@ -2620,10 +2660,14 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                         RASTR_output_params.all_parameters[current_counter].x_shift = 0.0;
                         RASTR_output_params.all_parameters[current_counter].y_shift = 0.0;
                     }
-                    else { // since they are masked so we need the RASTR adjusted shift to know the exact location of the upweghted region
+                    else if ( center_upweighted == false && align_upweighted == false ) { // since they are masked so we need the RASTR adjusted shift to know the exact location of the upweghted region
                         // NO PIXEL SIZE WITH RASTR_ADJ_CENTER ??????????????????????????????
-                        RASTR_output_params.all_parameters[current_counter].x_shift = RASTR_adjusted_center_x_shifts * pixel_size; // -RASTR_adjusted_x_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
-                        RASTR_output_params.all_parameters[current_counter].y_shift = RASTR_adjusted_center_y_shifts * pixel_size; // -RASTR_adjusted_y_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
+                        RASTR_output_params.all_parameters[current_counter].x_shift = RASTR_adjusted_center_x_shifts[image_counter] * pixel_size; // -RASTR_adjusted_x_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
+                        RASTR_output_params.all_parameters[current_counter].y_shift = RASTR_adjusted_center_y_shifts[image_counter] * pixel_size; // -RASTR_adjusted_y_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
+                    }
+                    else if ( center_upweighted == false && align_upweighted == true ) {
+                        RASTR_output_params.all_parameters[current_counter].x_shift = RASTR_adjusted_center_aligned_x_shifts[image_counter] * pixel_size; // -RASTR_adjusted_x_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
+                        RASTR_output_params.all_parameters[current_counter].y_shift = RASTR_adjusted_center_aligned_y_shifts[image_counter] * pixel_size; // -RASTR_adjusted_y_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
                     }
                 }
                 else { // if not masked then we are saving the aligned centered image
@@ -2635,7 +2679,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
                 RASTR_output_params.all_parameters[current_counter].theta = 90.0f;
 
-                RASTR_output_params.all_parameters[current_counter].phi                                = RASTR_random_phi;
+                RASTR_output_params.all_parameters[current_counter].phi                                = ref_phi;
                 RASTR_output_params.all_parameters[current_counter].defocus_1                          = ctf_parameters_stack[image_counter].defocus_1;
                 RASTR_output_params.all_parameters[current_counter].defocus_2                          = ctf_parameters_stack[image_counter].defocus_2;
                 RASTR_output_params.all_parameters[current_counter].defocus_angle                      = ctf_parameters_stack[image_counter].astigmatism_angle;
@@ -2652,6 +2696,13 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 RASTR_output_params.all_parameters[current_counter].beam_tilt_y                        = 0.0f;
                 RASTR_output_params.all_parameters[current_counter].image_shift_x                      = 0.0f;
                 RASTR_output_params.all_parameters[current_counter].image_shift_y                      = 0.0f;
+
+                if ( current_counter % 2 == 1 ) {
+                    RASTR_output_params.all_parameters[current_counter].assigned_subset == 1; // Odd particle number
+                }
+                else {
+                    RASTR_output_params.all_parameters[current_counter].assigned_subset == 2; // Even particle number
+                }
             }
         }
 
