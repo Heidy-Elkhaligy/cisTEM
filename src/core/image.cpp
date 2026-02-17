@@ -12154,3 +12154,189 @@ void Image::AverageRotationally( ) {
     if ( input_image_in_fourier_space )
         this->ForwardFFT( );
 }
+
+void Image::Skeletonize( ) {
+    MyDebugAssertTrue(is_in_memory, "Memory not allocated");
+    MyDebugAssertTrue(is_in_real_space, "Not in real space");
+
+    // Standard Zhang-Suen Thinning Algorithm
+    // Iterates until the image stops changing
+
+    int  i, j, k;
+    int  iter;
+    long pixel_counter;
+    long row_stride = logical_x_dimension + padding_jump_value;
+    bool pixel_removed;
+
+    // We need a marker buffer to flag pixels for deletion without modifying them
+    // immediately during the neighbor check loop.
+    // Using int to match the style of using raw pointers.
+    int* marker_buffer = new int[number_of_real_space_pixels];
+
+    // Offsets to get 8 neighbors: P2, P3, P4, P5, P6, P7, P8, P9
+    // P9 P2 P3
+    // P8 P1 P4
+    // P7 P6 P5
+    // Note: These offsets assume we are safe from image boundaries
+    long n_offsets[8];
+    n_offsets[0] = -row_stride; // P2 (North)
+    n_offsets[1] = -row_stride + 1; // P3 (North-East)
+    n_offsets[2] = 1; // P4 (East)
+    n_offsets[3] = row_stride + 1; // P5 (South-East)
+    n_offsets[4] = row_stride; // P6 (South)
+    n_offsets[5] = row_stride - 1; // P7 (South-West)
+    n_offsets[6] = -1; // P8 (West)
+    n_offsets[7] = -row_stride - 1; // P9 (North-West)
+
+    // Loop over Z slices (usually 1 for micrographs)
+    for ( k = 0; k < logical_z_dimension; k++ ) {
+
+        // Offset to the start of the current Z slice
+        long z_offset = k * (logical_y_dimension * row_stride);
+
+        do {
+            pixel_removed = false;
+
+            // --- SUB-ITERATION 1 ---
+            // Clear marker buffer for this pass
+            for ( long x = 0; x < number_of_real_space_pixels; x++ )
+                marker_buffer[x] = 0;
+
+            for ( j = 1; j < logical_y_dimension - 1; j++ ) {
+                for ( i = 1; i < logical_x_dimension - 1; i++ ) {
+
+                    // Calculate index manually to respect padding
+                    long idx = z_offset + (j * row_stride) + i;
+
+                    // If empty, skip
+                    if ( real_values[idx] == 0.0 )
+                        continue;
+
+                    // Get Neighbors (0 or 1)
+                    int p2 = (real_values[idx + n_offsets[0]] > 0.0) ? 1 : 0;
+                    int p3 = (real_values[idx + n_offsets[1]] > 0.0) ? 1 : 0;
+                    int p4 = (real_values[idx + n_offsets[2]] > 0.0) ? 1 : 0;
+                    int p5 = (real_values[idx + n_offsets[3]] > 0.0) ? 1 : 0;
+                    int p6 = (real_values[idx + n_offsets[4]] > 0.0) ? 1 : 0;
+                    int p7 = (real_values[idx + n_offsets[5]] > 0.0) ? 1 : 0;
+                    int p8 = (real_values[idx + n_offsets[6]] > 0.0) ? 1 : 0;
+                    int p9 = (real_values[idx + n_offsets[7]] > 0.0) ? 1 : 0;
+
+                    // B(P1) = Number of non-zero neighbors
+                    int B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+
+                    // A(P1) = Number of 0->1 patterns in sequence P2, P3...P9, P2
+                    int A = 0;
+                    if ( p2 == 0 && p3 == 1 )
+                        A++;
+                    if ( p3 == 0 && p4 == 1 )
+                        A++;
+                    if ( p4 == 0 && p5 == 1 )
+                        A++;
+                    if ( p5 == 0 && p6 == 1 )
+                        A++;
+                    if ( p6 == 0 && p7 == 1 )
+                        A++;
+                    if ( p7 == 0 && p8 == 1 )
+                        A++;
+                    if ( p8 == 0 && p9 == 1 )
+                        A++;
+                    if ( p9 == 0 && p2 == 1 )
+                        A++;
+
+                    // Conditions for Deletion (Pass 1)
+                    // 1. 2 <= B <= 6
+                    // 2. A == 1
+                    // 3. P2 * P4 * P6 == 0
+                    // 4. P4 * P6 * P8 == 0
+                    if ( B >= 2 && B <= 6 && A == 1 &&
+                         (p2 * p4 * p6 == 0) &&
+                         (p4 * p6 * p8 == 0) ) {
+                        marker_buffer[idx] = 1; // Mark for deletion
+                        pixel_removed      = true;
+                    }
+                }
+            }
+
+            // Apply deletions from Pass 1
+            if ( pixel_removed ) {
+                for ( j = 1; j < logical_y_dimension - 1; j++ ) {
+                    for ( i = 1; i < logical_x_dimension - 1; i++ ) {
+                        long idx = z_offset + (j * row_stride) + i;
+                        if ( marker_buffer[idx] == 1 )
+                            real_values[idx] = 0.0;
+                    }
+                }
+            }
+
+            // --- SUB-ITERATION 2 ---
+            // (Only differenence is conditions 3 and 4)
+            bool pass2_removed = false;
+            // Reset markers? No, just overwrite them or re-init loop.
+            // Safer to re-zero loop just the markers we might use, but let's just clear for safety.
+            for ( long x = 0; x < number_of_real_space_pixels; x++ )
+                marker_buffer[x] = 0;
+
+            for ( j = 1; j < logical_y_dimension - 1; j++ ) {
+                for ( i = 1; i < logical_x_dimension - 1; i++ ) {
+                    long idx = z_offset + (j * row_stride) + i;
+                    if ( real_values[idx] == 0.0 )
+                        continue;
+
+                    int p2 = (real_values[idx + n_offsets[0]] > 0.0) ? 1 : 0;
+                    int p3 = (real_values[idx + n_offsets[1]] > 0.0) ? 1 : 0;
+                    int p4 = (real_values[idx + n_offsets[2]] > 0.0) ? 1 : 0;
+                    int p5 = (real_values[idx + n_offsets[3]] > 0.0) ? 1 : 0;
+                    int p6 = (real_values[idx + n_offsets[4]] > 0.0) ? 1 : 0;
+                    int p7 = (real_values[idx + n_offsets[5]] > 0.0) ? 1 : 0;
+                    int p8 = (real_values[idx + n_offsets[6]] > 0.0) ? 1 : 0;
+                    int p9 = (real_values[idx + n_offsets[7]] > 0.0) ? 1 : 0;
+
+                    int B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+                    int A = 0;
+                    if ( p2 == 0 && p3 == 1 )
+                        A++;
+                    if ( p3 == 0 && p4 == 1 )
+                        A++;
+                    if ( p4 == 0 && p5 == 1 )
+                        A++;
+                    if ( p5 == 0 && p6 == 1 )
+                        A++;
+                    if ( p6 == 0 && p7 == 1 )
+                        A++;
+                    if ( p7 == 0 && p8 == 1 )
+                        A++;
+                    if ( p8 == 0 && p9 == 1 )
+                        A++;
+                    if ( p9 == 0 && p2 == 1 )
+                        A++;
+
+                    // Conditions for Deletion (Pass 2)
+                    // 3. P2 * P4 * P8 == 0
+                    // 4. P2 * P6 * P8 == 0
+                    if ( B >= 2 && B <= 6 && A == 1 &&
+                         (p2 * p4 * p8 == 0) &&
+                         (p2 * p6 * p8 == 0) ) {
+                        marker_buffer[idx] = 1;
+                        pass2_removed      = true;
+                        pixel_removed      = true; // Keep outer loop going
+                    }
+                }
+            }
+
+            // Apply deletions from Pass 2
+            if ( pass2_removed ) {
+                for ( j = 1; j < logical_y_dimension - 1; j++ ) {
+                    for ( i = 1; i < logical_x_dimension - 1; i++ ) {
+                        long idx = z_offset + (j * row_stride) + i;
+                        if ( marker_buffer[idx] == 1 )
+                            real_values[idx] = 0.0;
+                    }
+                }
+            }
+
+        } while ( pixel_removed ); // Continue until image stops changing
+    }
+
+    delete[] marker_buffer;
+}

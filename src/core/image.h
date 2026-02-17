@@ -590,6 +590,7 @@ class Image {
 
     // for displaying
     void CreateOrthogonalProjectionsImage(Image* image_to_create, bool include_projections = true, float scale_factor = 1.0f, float mask_radius_in_pixels = 0.0f);
+    void Skeletonize( );
 };
 
 class BeamTiltScorer {

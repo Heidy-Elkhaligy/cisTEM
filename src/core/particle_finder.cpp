@@ -753,8 +753,19 @@ void ParticleFinder::DoTemplateMatching( ) {
             template_large.ForwardFFT(false);
             template_large.NormalizeFT( );
 
-            // Cross correlation (matched filter)
-            template_large.ConjugateMultiplyPixelWise(micrograph_whitened);
+            // --- FIX STARTS HERE ---
+
+            // 1. Conjugate the Template (Prepare it for Correlation)
+            template_large.Conj( );
+
+            // 2. Multiply by the Micrograph (Standard multiplication, not ConjugateMultiply)
+            // This achieves: conj(Template) * Micrograph
+            template_large.MultiplyPixelWise(micrograph_whitened);
+
+            // --- FIX ENDS HERE ---
+
+            // // Cross correlation (matched filter)
+            // template_large.ConjugateMultiplyPixelWise(micrograph_whitened);
             template_large.BackwardFFT( );
             //template_large.NormalizeFT(); // This is necessary for the scaling to be correct
             //template_large.QuickAndDirtyWriteSlice("dbg_cc.mrc",template_counter * number_of_template_rotations + rotation_counter + 1);
@@ -782,6 +793,27 @@ void ParticleFinder::DoTemplateMatching( ) {
 #ifdef dump_intermediate_files
     maximum_score.QuickAndDirtyWriteSlice("dbg_maximum_score.mrc", 1);
 #endif
+
+    float image_average = maximum_score.ReturnAverageOfRealValues( );
+    float image_sd      = sqrt(maximum_score.ReturnVarianceOfRealValues( ));
+    // Image micrograph_whitened_copy;
+    // micrograph_whitened_copy.CopyFrom(&micrograph_whitened);
+    Image binary_mask;
+    binary_mask.Allocate(maximum_score.logical_x_dimension, maximum_score.logical_y_dimension, 1, true, true);
+    binary_mask.SetToConstant(0.0);
+    // Threshold value is 2 sd away from mean to eliminate any outliers
+    float image_threshold = image_average + (2 * image_sd); //
+    binary_mask.CopyFrom(&maximum_score);
+    // binary_mask.GaussianLowPassFilter(pixel_size * 2 / 50);
+    binary_mask.Binarise(image_threshold);
+    binary_mask.QuickAndDirtyWriteSlice("maximum_score_masked.mrc", 1);
+    binary_mask.DilateBinarizedMask(10);
+    binary_mask.QuickAndDirtyWriteSlice("maximum_score_mask_dilated.mrc", 1);
+    binary_mask.ErodeBinarizedMask(10); // is this by pixels?
+    binary_mask.QuickAndDirtyWriteSlice("maximum_score_mask_erroded.mrc", 1);
+    binary_mask.Skeletonize( ); // is this by pixels?
+    binary_mask.QuickAndDirtyWriteSlice("maximum_score_mask_skeleton.mrc", 1);
+
     template_giving_maximum_score.SwapRealSpaceQuadrants( );
     template_giving_maximum_score.object_is_centred_in_box = true;
     template_rotation_giving_maximum_score.SwapRealSpaceQuadrants( );
@@ -891,7 +923,25 @@ void ParticleFinder::WhitenMicrographBackground( ) {
 #ifdef dump_intermediate_files
     micrograph_whitened.BackwardFFT( );
     micrograph_whitened.NormalizeFT( );
-    micrograph_whitened.QuickAndDirtyWriteSlice("dbg_micrograph_whitened.mrc", 1);
+    micrograph_whitened.QuickAndDirtyWriteSlice("dbg_micrograph_whitened.mrc", 1); // I need to work on this to find the position of the tubes in the images (Maybe filter and keep the values above average?)
+    // float image_average = micrograph_whitened.ReturnAverageOfRealValues( );
+    // float image_sd      = sqrt(micrograph_whitened.ReturnVarianceOfRealValues( ));
+    // // Image micrograph_whitened_copy;
+    // // micrograph_whitened_copy.CopyFrom(&micrograph_whitened);
+    // Image binary_mask;
+    // binary_mask.Allocate(micrograph.logical_x_dimension, micrograph.logical_y_dimension, 1, true, true);
+    // binary_mask.SetToConstant(0.0);
+    // // Threshold value is 2 sd away from mean to eliminate any outliers
+    // float image_threshold = image_average + (2 * image_sd); //
+    // binary_mask.CopyFrom(&micrograph_whitened);
+    // // binary_mask.GaussianLowPassFilter(pixel_size * 2 / 50);
+    // binary_mask.Binarise(image_threshold);
+    // binary_mask.QuickAndDirtyWriteSlice("mimicrograph_whitened_mask.mrc", 1);
+    // binary_mask.ErodeBinarizedMask(100); // is this by pixels?
+    // binary_mask.QuickAndDirtyWriteSlice("mimicrograph_whitened_mask_erroded.mrc", 1);
+    // binary_mask.DilateBinarizedMask(100);
+    // binary_mask.QuickAndDirtyWriteSlice("mimicrograph_whitened_mask_dilated.mrc", 1);
+
     micrograph_whitened.ForwardFFT(false);
     micrograph_whitened.NormalizeFT( );
 #endif
