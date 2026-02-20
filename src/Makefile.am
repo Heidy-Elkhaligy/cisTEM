@@ -308,7 +308,9 @@ bin_PROGRAMS =  cisTEM_job_control \
                 calculate_autocorrelation \
                 abel_transform \
                 randomize_rastr_phi \
-                analyze_images
+                analyze_images \
+                save_1d_projection \
+                save_orth_views
 
 
 
@@ -1025,6 +1027,12 @@ make_orth_views_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 make_orth_views_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 make_orth_views_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
+save_orth_views_SOURCES  = programs/save_orth_views/save_orth_views.cpp
+save_orth_views_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+save_orth_views_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+save_orth_views_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+save_orth_views_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
 sharpen_map_SOURCES  = programs/sharpen_map/sharpen_map.cpp
 sharpen_map_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 sharpen_map_CPPFLAGS = $(WX_CPPFLAGS_BASE)
@@ -1413,7 +1421,11 @@ prepare_stack_matchtemplate_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 prepare_stack_matchtemplate_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 prepare_stack_matchtemplate_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
-
+save_1d_projection_SOURCES  = programs/save_1d_projection/save_1d_projection.cpp
+save_1d_projection_CXXFLAGS = $(WX_CPPFLAGS_BASE)
+save_1d_projection_CPPFLAGS = $(WX_CPPFLAGS_BASE)
+save_1d_projection_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
+save_1d_projection_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 make_template_result_SOURCES  = programs/make_template_result/make_template_result.cpp
 make_template_result_CXXFLAGS = $(WX_CPPFLAGS_BASE)
