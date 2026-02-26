@@ -93,16 +93,16 @@ bool PrepareStackApp::DoCalculation( ) {
         output_file = new MRCFile(output_particle_images.ToStdString( ), true);
 
     Image input_image;
-    Image sum_power;
+    //Image sum_power;
     Image temp_image;
 
-    Curve                 noise_power_spectrum;
+    //Curve                 noise_power_spectrum;
     Curve                 number_of_terms;
     RandomNumberGenerator random_generator;
 
     input_image.Allocate(input_file.ReturnXSize( ), input_file.ReturnYSize( ), 1);
-    sum_power.Allocate(input_file.ReturnXSize( ), input_file.ReturnYSize( ), 1, false);
-    sum_power.SetToConstant(0.0);
+    //sum_power.Allocate(input_file.ReturnXSize( ), input_file.ReturnYSize( ), 1, false);
+    //sum_power.SetToConstant(0.0);
 
     cisTEMParameters input_star_file;
 
@@ -117,18 +117,18 @@ bool PrepareStackApp::DoCalculation( ) {
         last_particle  = input_file.ReturnNumberOfSlices( );
     }
 
-    if ( is_running_locally == true )
-        wxPrintf("\nCalculating noise power spectrum...\n\n");
+    // if ( is_running_locally == true )
+    //     wxPrintf("\nCalculating noise power spectrum...\n\n");
 
     float percentage = float(max_samples) / float(images_to_process);
-    sum_power.SetToConstant(0.0);
+    // sum_power.SetToConstant(0.0);
 
-    if ( 2.0 * mask_radius_for_noise + mask_falloff / output_pixel_size > 0.95 * input_image.logical_x_dimension ) {
-        mask_radius_for_noise = 0.95 * input_image.logical_x_dimension / 2.0 - mask_falloff / 2.0 / output_pixel_size;
-    }
+    // if ( 2.0 * mask_radius_for_noise + mask_falloff / output_pixel_size > 0.95 * input_image.logical_x_dimension ) {
+    //     mask_radius_for_noise = 0.95 * input_image.logical_x_dimension / 2.0 - mask_falloff / 2.0 / output_pixel_size;
+    // }
 
-    noise_power_spectrum.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((sum_power.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
-    number_of_terms.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((sum_power.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
+    // noise_power_spectrum.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((sum_power.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
+    // number_of_terms.SetupXAxis(0.0, 0.5 * sqrtf(2.0), int((sum_power.logical_x_dimension / 2.0 + 1.0) * sqrtf(2.0) + 1.0));
 
     if ( is_running_locally == true )
         my_progress = new ProgressBar(input_file.ReturnNumberOfSlices( ));
@@ -141,24 +141,24 @@ bool PrepareStackApp::DoCalculation( ) {
 
         input_image.ReadSlice(&input_file, current_image);
         input_image.ChangePixelSize(&input_image, output_pixel_size / input_star_file.ReturnPixelSize(current_image - 1), 0.001f);
-        variance = input_image.ReturnVarianceOfRealValues(mask_radius_for_noise, 0.0, 0.0, 0.0, true);
-        if ( variance == 0.0 )
-            continue;
+        // variance = input_image.ReturnVarianceOfRealValues(mask_radius_for_noise, 0.0, 0.0, 0.0, true);
+        // if ( variance == 0.0 )
+        //     continue;
 
-        input_image.MultiplyByConstant(1.0 / sqrtf(variance));
-        input_image.CosineMask(mask_radius_for_noise, mask_falloff / output_pixel_size, true);
-        input_image.ForwardFFT( );
-        temp_image.CopyFrom(&input_image);
-        temp_image.ConjugateMultiplyPixelWise(input_image);
-        sum_power.AddImage(&temp_image);
+        // input_image.MultiplyByConstant(1.0 / sqrtf(variance));
+        // input_image.CosineMask(mask_radius_for_noise, mask_falloff / output_pixel_size, true);
+        // input_image.ForwardFFT( );
+        // temp_image.CopyFrom(&input_image);
+        // temp_image.ConjugateMultiplyPixelWise(input_image);
+        // sum_power.AddImage(&temp_image);
 
         if ( is_running_locally == true )
             my_progress->Update(current_image);
     }
 
-    sum_power.Compute1DRotationalAverage(noise_power_spectrum, number_of_terms);
-    noise_power_spectrum.SquareRoot( );
-    noise_power_spectrum.Reciprocal( );
+    // sum_power.Compute1DRotationalAverage(noise_power_spectrum, number_of_terms);
+    // noise_power_spectrum.SquareRoot( );
+    // noise_power_spectrum.Reciprocal( );
 
     if ( is_running_locally == true )
         delete my_progress;
@@ -175,16 +175,16 @@ bool PrepareStackApp::DoCalculation( ) {
         input_image.ReadSlice(&input_file, current_image);
         input_image.ChangePixelSize(&input_image, output_pixel_size / input_star_file.ReturnPixelSize(current_image - 1), 0.001f);
         input_image.ForwardFFT( );
-        input_image.ApplyCurveFilter(&noise_power_spectrum);
+        // input_image.ApplyCurveFilter(&noise_power_spectrum);
 
         if ( resample_box == true ) {
             input_image.Resize(wanted_output_box_size, wanted_output_box_size, 1);
         }
 
         input_image.BackwardFFT( );
-        variance = input_image.ReturnVarianceOfRealValues(input_image.physical_address_of_box_center_x - mask_falloff / output_pixel_size, 0.0, 0.0, 0.0, true);
-        average  = input_image.ReturnAverageOfRealValues(input_image.physical_address_of_box_center_x - mask_falloff / output_pixel_size, true);
-        input_image.AddMultiplyConstant(-average, 1.0 / sqrtf(variance));
+        // variance = input_image.ReturnVarianceOfRealValues(input_image.physical_address_of_box_center_x - mask_falloff / output_pixel_size, 0.0, 0.0, 0.0, true);
+        // average  = input_image.ReturnAverageOfRealValues(input_image.physical_address_of_box_center_x - mask_falloff / output_pixel_size, true);
+        // input_image.AddMultiplyConstant(-average, 1.0 / sqrtf(variance));
 
         if ( is_running_locally == true ) {
             input_image.WriteSlice(output_file, current_image);
