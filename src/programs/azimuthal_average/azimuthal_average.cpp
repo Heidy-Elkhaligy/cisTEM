@@ -1496,6 +1496,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         sum_images_after_aln[bin_index].BackwardFFT( );
         sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("final_sum_image.mrc", bin_index + 1);
 
+        // whitened image
         // Vertically summing the image to ensure cross-correlation doesn't correlate by mistake to a wrong area if input images are pre-aligned
         sum_image_direction(&sum_whiten_images[bin_index], 2);
         sum_whiten_images[bin_index].ForwardFFT( );
