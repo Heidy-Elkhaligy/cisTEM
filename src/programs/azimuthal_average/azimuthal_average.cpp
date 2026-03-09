@@ -1771,67 +1771,65 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // RUN THIS ON SINGLE THREAD IS BETTER
 //Image azimuthal_average_slice;
 #pragma omp parallel for schedule(dynamic, 1) num_threads(std::min(bins_count, max_threads)) default(none) shared(SPOT_RASTR, RASTR, prepare_projections_progress, current_image, bins_count, sum_whiten_images, model_volume, my_masked_volume, my_mask, input_3d, masked_3d, my_output_sum_image_filename,            \
-                                                                                                                  pixel_size, padding_factor, x_mask_center, y_mask_center, z_mask_center, sphere_mask_radius, filter_radius, use_outside_value, x_dim, y_dim,                                                          \
+                                                                                                                  pixel_size, padding_factor, x_mask_center, y_mask_center, z_mask_center, sphere_mask_radius, filter_radius, use_outside_value, x_dim, y_dim, sum_images_after_aln,                                    \
                                                                                                                   outside_value, outside_weight, cosine_edge, number_of_models, input_mask, model_file_name, output_average_per_bin_filename, mask_edge, outer_mask_radius,                                             \
                                                                                                                   output_azimuthal_average_volume_filename, model_dimension, masked_projection_volume_3d, projection_volume_3d) private(projection_volume_image, padded_projection_volume_image, output_model_filename, \
                                                                                                                                                                                                                                         masked_projection_volume_image, masked_padded_projection_volume_image, my_white_mask, mask_volume, mask_projection, my_parameters)
 
         for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
 
-            model_volume[bin_index].Allocate(padding_factor * sum_whiten_images[bin_index].logical_x_dimension, padding_factor * sum_whiten_images[bin_index].logical_y_dimension, padding_factor * sum_whiten_images[bin_index].logical_x_dimension, true);
-            model_volume[bin_index].SetToConstant(0.0);
-
-            float edge_value = sum_whiten_images[bin_index].ReturnAverageOfRealValuesOnEdges( );
-            sum_whiten_images[bin_index].Resize(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, 1, edge_value);
-            //sum_whiten_images[bin_index].QuickAndDirtyWriteSlice("resized_sum_image_with_average.mrc", bin_index + 1);
-            // fill the padded version with the sum image
-            // then do average rotationally before filling the volume
-            sum_image_direction(&sum_whiten_images[bin_index], 2);
-            //sum_whiten_images[bin_index].QuickAndDirtyWriteSlice("sum_image_after_adding_average.mrc", bin_index + 1);
-
-            // mask the 2D image to avoid ring effect outside the azimuthal average volume
-            float mask_edge = x_dim * 0.05f; // 5% of the pixels will constitute the soft edge
-
-            if ( outer_mask_radius != 0 ) {
-                sum_whiten_images[bin_index].CosineMask(outer_mask_radius, mask_edge, false, false, 0.0f);
-            }
-            else if ( outer_mask_radius == 0 ) {
-                sum_whiten_images[bin_index].CosineMask(x_dim * 0.45, mask_edge, false, false, 0.0f);
-            }
-
-            sum_whiten_images[bin_index].ApplyRampFilter( );
-            sum_whiten_images[bin_index].AverageRotationally( );
-
-            // fill in the model volume with the azimuthal average slice
-            long volume_counter = 0;
-            for ( int z = 0; z < model_volume[bin_index].logical_z_dimension; z++ ) {
-                for ( int y = 0; y < model_volume[bin_index].logical_y_dimension; y++ ) {
-                    for ( int x = 0; x < model_volume[bin_index].logical_x_dimension; x++ ) {
-                        long pixel_coord_xy                                 = sum_whiten_images[bin_index].ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
-                        model_volume[bin_index].real_values[volume_counter] = sum_whiten_images[bin_index].real_values[pixel_coord_xy];
-                        volume_counter++;
-                    }
-                    volume_counter += sum_whiten_images[bin_index].padding_jump_value;
-                }
-            }
-
-            //Invert contrast and resize the sum_whiten_images back to be unpadded
-            sum_whiten_images[bin_index].InvertRealValues( );
-            sum_whiten_images[bin_index].Resize(x_dim, y_dim, 1, edge_value);
-            // save the azimuthal average model to an MRC file
-            model_file_name       = output_azimuthal_average_volume_filename + "_" + std::to_string(bin_index + 1) + ".mrc";
-            output_model_filename = new MRCFile(model_file_name, true, true);
-            for ( long model_counter = 0; model_counter < model_dimension; model_counter++ ) {
-                sum_whiten_images[bin_index].WriteSlice(output_model_filename, model_counter + 1);
-            }
-            // output_model_filename->my_header.SetDimensionsVolume(model_dimension, model_dimension, model_dimension);
-            // output_model_filename->my_header.SetPixelSize(pixel_size);
-            output_model_filename->WriteHeader( );
-            delete output_model_filename;
-            //}
-
-            // if we will not apply mask and will subtract the projection of the azimuthal average as is
             if ( SPOT_RASTR == true ) {
+                model_volume[bin_index].Allocate(padding_factor * sum_images_after_aln[bin_index].logical_x_dimension, padding_factor * sum_images_after_aln[bin_index].logical_y_dimension, padding_factor * sum_images_after_aln[bin_index].logical_x_dimension, true);
+                model_volume[bin_index].SetToConstant(0.0);
+
+                float edge_value = sum_images_after_aln[bin_index].ReturnAverageOfRealValuesOnEdges( );
+                sum_images_after_aln[bin_index].Resize(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, 1, edge_value);
+                //sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("resized_sum_image_with_average.mrc", bin_index + 1);
+
+                // fill the padded version with the sum image
+                // then do average rotationally before filling the volume
+                sum_image_direction(&sum_images_after_aln[bin_index], 2);
+                //sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("sum_image_after_adding_average.mrc", bin_index + 1);
+
+                // mask the 2D image to avoid ring effect outside the azimuthal average volume
+                if ( outer_mask_radius != 0 ) {
+                    sum_images_after_aln[bin_index].CosineMask(outer_mask_radius, mask_edge, false, false, 0.0f);
+                }
+                else if ( outer_mask_radius == 0 ) {
+                    sum_images_after_aln[bin_index].CosineMask(x_dim * 0.45, mask_edge, false, false, 0.0f);
+                }
+
+                sum_images_after_aln[bin_index].ApplyRampFilter( );
+                sum_images_after_aln[bin_index].AverageRotationally( );
+                sum_images_after_aln[bin_index].InvertRealValues( );
+
+                // fill in the model volume with the azimuthal average slice
+                long volume_counter = 0;
+                for ( int z = 0; z < model_volume[bin_index].logical_z_dimension; z++ ) {
+                    for ( int y = 0; y < model_volume[bin_index].logical_y_dimension; y++ ) {
+                        for ( int x = 0; x < model_volume[bin_index].logical_x_dimension; x++ ) {
+                            long pixel_coord_xy                                 = sum_images_after_aln[bin_index].ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
+                            model_volume[bin_index].real_values[volume_counter] = sum_images_after_aln[bin_index].real_values[pixel_coord_xy];
+                            volume_counter++;
+                        }
+                        volume_counter += sum_images_after_aln[bin_index].padding_jump_value;
+                    }
+                }
+                //resize the sum_images_after_aln back to be unpadded
+                sum_images_after_aln[bin_index].Resize(x_dim, y_dim, 1, edge_value);
+
+                // I need to move this to another location to ensure saving the azimuthal averages volume with correct contrast (I need to invert real values)
+                // This can't happen here it needs to be later when sum_images_after_aln will not be used anymore
+                // save the azimuthal average model to an MRC file
+                model_file_name       = output_azimuthal_average_volume_filename + "_" + std::to_string(bin_index + 1) + ".mrc";
+                output_model_filename = new MRCFile(model_file_name, true, true);
+                for ( long model_counter = 0; model_counter < model_dimension; model_counter++ ) {
+                    sum_images_after_aln[bin_index].WriteSlice(output_model_filename, model_counter + 1);
+                }
+                // output_model_filename->my_header.SetDimensionsVolume(model_dimension, model_dimension, model_dimension);
+                // output_model_filename->my_header.SetPixelSize(pixel_size);
+                output_model_filename->WriteHeader( );
+                delete output_model_filename;
 
                 input_3d[bin_index].InitWithDimensions(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, model_volume[bin_index].logical_z_dimension, pixel_size);
                 input_3d[bin_index].density_map->CopyFrom(&model_volume[bin_index]);
@@ -1868,8 +1866,57 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 projection_volume_image.Deallocate( );
                 padded_projection_volume_image.Deallocate( );
             }
+            if ( RASTR == true ) {
+                model_volume[bin_index].Allocate(padding_factor * sum_whiten_images[bin_index].logical_x_dimension, padding_factor * sum_whiten_images[bin_index].logical_y_dimension, padding_factor * sum_whiten_images[bin_index].logical_x_dimension, true);
+                model_volume[bin_index].SetToConstant(0.0);
 
-            if ( RASTR == true ) { // if a mask is applied and masked model is what will be projected and subtracted
+                float edge_value = sum_whiten_images[bin_index].ReturnAverageOfRealValuesOnEdges( );
+                sum_whiten_images[bin_index].Resize(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, 1, edge_value);
+                //sum_whiten_images[bin_index].QuickAndDirtyWriteSlice("resized_sum_image_with_average.mrc", bin_index + 1);
+                // fill the padded version with the sum image
+                // then do average rotationally before filling the volume
+                sum_image_direction(&sum_whiten_images[bin_index], 2);
+                //sum_whiten_images[bin_index].QuickAndDirtyWriteSlice("sum_image_after_adding_average.mrc", bin_index + 1);
+
+                // mask the 2D image to avoid ring effect outside the azimuthal average volume
+                float mask_edge = x_dim * 0.05f; // 5% of the pixels will constitute the soft edge
+
+                if ( outer_mask_radius != 0 ) {
+                    sum_whiten_images[bin_index].CosineMask(outer_mask_radius, mask_edge, false, false, 0.0f);
+                }
+                else if ( outer_mask_radius == 0 ) {
+                    sum_whiten_images[bin_index].CosineMask(x_dim * 0.45, mask_edge, false, false, 0.0f);
+                }
+
+                sum_whiten_images[bin_index].ApplyRampFilter( );
+                sum_whiten_images[bin_index].AverageRotationally( );
+
+                // fill in the model volume with the azimuthal average slice
+                long volume_counter = 0;
+                for ( int z = 0; z < model_volume[bin_index].logical_z_dimension; z++ ) {
+                    for ( int y = 0; y < model_volume[bin_index].logical_y_dimension; y++ ) {
+                        for ( int x = 0; x < model_volume[bin_index].logical_x_dimension; x++ ) {
+                            long pixel_coord_xy                                 = sum_whiten_images[bin_index].ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
+                            model_volume[bin_index].real_values[volume_counter] = sum_whiten_images[bin_index].real_values[pixel_coord_xy];
+                            volume_counter++;
+                        }
+                        volume_counter += sum_whiten_images[bin_index].padding_jump_value;
+                    }
+                }
+
+                //Invert contrast and resize the sum_whiten_images back to be unpadded
+                sum_whiten_images[bin_index].InvertRealValues( );
+                sum_whiten_images[bin_index].Resize(x_dim, y_dim, 1, edge_value);
+                // save the azimuthal average model to an MRC file
+                model_file_name       = output_azimuthal_average_volume_filename + "_" + std::to_string(bin_index + 1) + ".mrc";
+                output_model_filename = new MRCFile(model_file_name, true, true);
+                for ( long model_counter = 0; model_counter < model_dimension; model_counter++ ) {
+                    sum_whiten_images[bin_index].WriteSlice(output_model_filename, model_counter + 1);
+                }
+                // output_model_filename->my_header.SetDimensionsVolume(model_dimension, model_dimension, model_dimension);
+                // output_model_filename->my_header.SetPixelSize(pixel_size);
+                output_model_filename->WriteHeader( );
+                delete output_model_filename;
 
                 // prepare an unmasked azimuthal average volume to be used for getting the correct scaling factor
                 // I will not save any projections from this generated volume, only the masked one to ensure they are masked correctly
@@ -1943,6 +1990,122 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     masked_projection_volume_image.Deallocate( );
                 }
             }
+
+            //}
+
+            //             // if we will not apply mask and will subtract the projection of the azimuthal average as is
+            //             if ( SPOT_RASTR == true ) {
+
+            //                 input_3d[bin_index].InitWithDimensions(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, model_volume[bin_index].logical_z_dimension, pixel_size);
+            //                 input_3d[bin_index].density_map->CopyFrom(&model_volume[bin_index]);
+            //                 float mask_radius               = FLT_MAX; //100 - FLT_MAX
+            //                 input_3d[bin_index].mask_radius = mask_radius;
+            //                 input_3d[bin_index].PrepareForProjections(0.0, 2.0 * pixel_size); // 0.0, 2.0 * pixel_size float low resolution limit and high resolution limit, bool approximate bining = F and apply_bining = T
+
+            //                 projection_volume_3d[bin_index].CopyFrom(input_3d[bin_index].density_map);
+            //                 // deallocate the reconstruction volume
+            //                 input_3d[bin_index].Deallocate( );
+
+            //                 projection_volume_image.Allocate(x_dim, y_dim, true);
+            //                 padded_projection_volume_image.Allocate(x_dim * padding_factor, y_dim * padding_factor, false); // as my volume now is already padded so no need to add extra padding
+
+            //                 my_parameters.Init(0.0, 90.0, 90.0, 0.0, 0.0);
+            //                 projection_volume_3d[bin_index].ExtractSlice(padded_projection_volume_image, my_parameters); //
+            //                 padded_projection_volume_image.SwapRealSpaceQuadrants( ); // must do this step as image is not centered in the box
+            //                 padded_projection_volume_image.BackwardFFT( );
+            //                 padded_projection_volume_image.object_is_centred_in_box = true;
+            //                 padded_projection_volume_image.ClipInto(&projection_volume_image);
+            //                 if ( ! my_output_sum_image_filename.IsOpen( ) ) {
+            //                     my_output_sum_image_filename.OpenFile(output_average_per_bin_filename.ToStdString( ), true);
+            //                     if ( ! my_output_sum_image_filename.IsOpen( ) ) {
+            //                         wxPrintf("ERROR: Could not open '%s' for writing\n", output_average_per_bin_filename.ToStdString( ).c_str( ));
+            //                         DEBUG_ABORT;
+            //                     }
+            //                 }
+
+            //                 //invert contrast before writing to restore correct contrast as CTF correction inverted the contrast of the images
+            //                 projection_volume_image.InvertRealValues( );
+
+            // #pragma omp critical
+            //                 projection_volume_image.WriteSlice(&my_output_sum_image_filename, bin_index + 1);
+            //                 projection_volume_image.Deallocate( );
+            //                 padded_projection_volume_image.Deallocate( );
+            //             }
+
+            //             if ( RASTR == true ) { // if a mask is applied and masked model is what will be projected and subtracted
+
+            //                 // prepare an unmasked azimuthal average volume to be used for getting the correct scaling factor
+            //                 // I will not save any projections from this generated volume, only the masked one to ensure they are masked correctly
+            //                 input_3d[bin_index].InitWithDimensions(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, model_volume[bin_index].logical_z_dimension, pixel_size);
+            //                 input_3d[bin_index].density_map->CopyFrom(&model_volume[bin_index]);
+            //                 float mask_radius               = FLT_MAX; //100 - FLT_MAX
+            //                 input_3d[bin_index].mask_radius = mask_radius;
+
+            //                 input_3d[bin_index].PrepareForProjections(0.0, 2.0 * pixel_size);
+            //                 projection_volume_3d[bin_index].CopyFrom(input_3d[bin_index].density_map);
+            //                 //deallocate the reconstruction volume
+            //                 input_3d[bin_index].Deallocate( );
+            //                 // prepare the masked azimuthal average volumes at different Phi angles
+            //                 my_masked_volume[bin_index].CopyFrom(&model_volume[bin_index]);
+
+            //                 float filter_edge = 40.0;
+            //                 float mask_volume_in_voxels;
+
+            //                 //wxPrintf("\nMasking Volume...\n");
+
+            //                 if ( ! model_volume[bin_index].HasSameDimensionsAs(&my_mask) ) {
+            //                     wxPrintf("\nVolume and mask file have different dimensions\n");
+            //                     DEBUG_ABORT;
+            //                 }
+            //                 if ( filter_radius == 0.0 )
+            //                     filter_radius = pixel_size;
+            //                 mask_volume_in_voxels = my_masked_volume[bin_index].ApplyMask(my_mask, cosine_edge / pixel_size, outside_weight, pixel_size / filter_radius, pixel_size / filter_edge, outside_value, use_outside_value);
+
+            //                 //save the masked azimuthal average
+            //                 //my_masked_volume[bin_index].QuickAndDirtyWriteSlices("masked_azimuthal_average.mrc", 1, my_masked_volume[bin_index].logical_z_dimension);
+
+            //                 // create the density map to initiate the projections
+            //                 // pad 3D masked volume
+            //                 masked_3d[bin_index].InitWithDimensions(my_masked_volume[bin_index].logical_x_dimension, my_masked_volume[bin_index].logical_y_dimension, my_masked_volume[bin_index].logical_z_dimension, pixel_size);
+            //                 masked_3d[bin_index].density_map->CopyFrom(&my_masked_volume[bin_index]);
+            //                 mask_radius                      = FLT_MAX; //100 - FLT_MAX
+            //                 masked_3d[bin_index].mask_radius = mask_radius;
+            //                 masked_3d[bin_index].PrepareForProjections(0.0, 2.0 * pixel_size);
+            //                 masked_projection_volume_3d[bin_index].CopyFrom(masked_3d[bin_index].density_map);
+
+            //                 // deallocate the reconstruction volume
+            //                 masked_3d[bin_index].Deallocate( );
+
+            //                 float phi;
+            //                 for ( long model_counter = 0; model_counter < number_of_models; model_counter++ ) {
+            //                     //Allocate memory for the masked and padded masked projections
+            //                     masked_projection_volume_image.Allocate(x_dim, y_dim, true);
+            //                     masked_padded_projection_volume_image.Allocate(x_dim * padding_factor, y_dim * padding_factor, false); // as my volume now is already padded so no need to add extra padding
+            //                     //calculate the phi angle
+            //                     phi = model_counter * 360.0 / number_of_models;
+            //                     my_parameters.Init(phi, 90.0, 90.0, 0.0, 0.0);
+            //                     masked_projection_volume_3d[bin_index].ExtractSlice(masked_padded_projection_volume_image, my_parameters); //
+            //                     masked_padded_projection_volume_image.SwapRealSpaceQuadrants( ); // must do this step as image is not centered in the box
+            //                     masked_padded_projection_volume_image.BackwardFFT( );
+            //                     masked_padded_projection_volume_image.object_is_centred_in_box = true;
+            //                     masked_padded_projection_volume_image.ClipInto(&masked_projection_volume_image);
+            //                     if ( ! my_output_sum_image_filename.IsOpen( ) ) {
+            //                         my_output_sum_image_filename.OpenFile(output_average_per_bin_filename.ToStdString( ), true);
+            //                         if ( ! my_output_sum_image_filename.IsOpen( ) ) {
+            //                             wxPrintf("ERROR: Could not open '%s' for writing\n", output_average_per_bin_filename.ToStdString( ).c_str( ));
+            //                             DEBUG_ABORT;
+            //                         }
+            //                     }
+
+            //                     //invert contrast before writing to restore correct contrast as CTF correction inverted the contrast of the images
+            //                     masked_projection_volume_image.InvertRealValues( );
+
+            // #pragma omp critical
+            //                     masked_projection_volume_image.WriteSlice(&my_output_sum_image_filename, bin_index * number_of_models + model_counter + 1);
+            //                     masked_padded_projection_volume_image.Deallocate( );
+            //                     masked_projection_volume_image.Deallocate( );
+            //                 }
+            //             }
             model_volume[bin_index].Deallocate( );
             prepare_projections_progress->Update(bin_index + 1);
         }
@@ -2024,22 +2187,23 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 current_ctf.Init(ctf_parameters_stack[subtraction_image_counter].acceleration_voltage, ctf_parameters_stack[subtraction_image_counter].spherical_aberration, ctf_parameters_stack[subtraction_image_counter].amplitude_contrast, ctf_parameters_stack[subtraction_image_counter].defocus_1, ctf_parameters_stack[subtraction_image_counter].defocus_2, ctf_parameters_stack[subtraction_image_counter].astigmatism_angle, ctf_parameters_stack[subtraction_image_counter].lowest_frequency_for_fitting, ctf_parameters_stack[subtraction_image_counter].highest_frequency_for_fitting, ctf_parameters_stack[subtraction_image_counter].astigmatism_tolerance, ctf_parameters_stack[subtraction_image_counter].pixel_size, ctf_parameters_stack[subtraction_image_counter].additional_phase_shift);
             }
 
-            // whiten and normalize the subtracted image before subtraction
-            subtracted_image.ForwardFFT( );
-            subtracted_image.ApplyCurveFilterUninterpolated(&noise_power_spectrum);
-            subtracted_image.BackwardFFT( );
+            // // whiten and normalize the subtracted image before subtraction
+            // subtracted_image.ForwardFFT( );
+            // subtracted_image.ApplyCurveFilterUninterpolated(&noise_power_spectrum);
+            // subtracted_image.BackwardFFT( );
 
-            // Normalize background variance and average
-            float image_variance = subtracted_image.ReturnVarianceOfRealValues(subtracted_image.physical_address_of_box_center_x - mask_falloff / pixel_size, 0.0, 0.0, 0.0, true);
-            float image_average  = subtracted_image.ReturnAverageOfRealValues(subtracted_image.physical_address_of_box_center_x - mask_falloff / pixel_size, true);
-            if ( image_variance == 0.0f )
-                subtracted_image.SetToConstant(0.0f);
-            else
-                subtracted_image.AddMultiplyConstant(-image_average, 1.0 / sqrtf(image_variance));
+            // // Normalize background variance and average
+            // float image_variance = subtracted_image.ReturnVarianceOfRealValues(subtracted_image.physical_address_of_box_center_x - mask_falloff / pixel_size, 0.0, 0.0, 0.0, true);
+            // float image_average  = subtracted_image.ReturnAverageOfRealValues(subtracted_image.physical_address_of_box_center_x - mask_falloff / pixel_size, true);
+            // if ( image_variance == 0.0f )
+            //     subtracted_image.SetToConstant(0.0f);
+            // else
+            //     subtracted_image.AddMultiplyConstant(-image_average, 1.0 / sqrtf(image_variance));
 
             subtracted_image.ForwardFFT( );
             subtracted_image.ZeroCentralPixel( );
             subtracted_image.BackwardFFT( );
+            subtracted_image.Normalize( );
 
             my_parameters_for_subtraction.Init(0.0, 90.0, 90.0 - best_psi_value[subtraction_image_counter], 0.0, 0.0);
 
@@ -2332,15 +2496,15 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
                 phi = model_counter * 360.0 / number_of_models;
 
-                // // use the random phi generated per image and keep adding the reference phi to it so each image has its own random starting phi
-                // float random_phi       = random_phi_angles[subtraction_image_counter];
-                // float RASTR_random_phi = angle_within360(phi + random_phi);
+                // use the random phi generated per image and keep adding the reference phi to it so each image has its own random starting phi
+                float random_phi       = random_phi_angles[subtraction_image_counter];
+                float RASTR_random_phi = angle_within360(phi + random_phi);
 
                 // Extracting a slice from a 3D volume
                 // angles and shifts are negative to align projection with original input stack
                 // use the phi based on the number of models
 
-                my_parameters_for_subtraction.Init(phi, 90.0, 90.0 - best_psi_value[subtraction_image_counter], 0.0, 0.0); //phi
+                my_parameters_for_subtraction.Init(RASTR_random_phi, 90.0, 90.0 - best_psi_value[subtraction_image_counter], 0.0, 0.0); //phi
 
                 for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
                     if ( diameter_bins[subtraction_image_counter] == bin_index ) { // This should catch any diameter within the range
@@ -2455,7 +2619,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     float          RASTR_rotated_x, RASTR_rotated_y, RASTR_rotated_z;
                     // // generate the full rotation matrix
                     // Note: reversing order and negating angles to apply the inverse rotation
-                    RASTR_temp_matrix.SetToEulerRotation(-(90.0 - best_psi_value[subtraction_image_counter]), -90.0, -phi); //-phi
+                    RASTR_temp_matrix.SetToEulerRotation(-(90.0 - best_psi_value[subtraction_image_counter]), -90.0, -RASTR_random_phi); //-phi
 
                     //Maybe instead of using the x_mask_center use the adjusted_x_shift which is for the center of the tube instead of center of the mask to calculate the correct shift???
                     RASTR_temp_matrix.RotateCoords((x_mask_center - current_image.physical_address_of_box_center_x), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), RASTR_rotated_x, RASTR_rotated_y, RASTR_rotated_z);
@@ -2466,7 +2630,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
                     // wxPrintf("original mask location in x, y, z at phi %f and psi %f are %i, %i, %i and adjusted RASTR location are %f, %f, %f \n", -phi, -(90.0 - best_psi_value[subtraction_image_counter]), (x_mask_center - current_image.physical_address_of_box_center_x), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), -RASTR_rotated_x, -RASTR_rotated_y, -RASTR_rotated_z);
                     float average = subtracted_RASTR_image.ReturnAverageOfRealValues( );
-                    mask_parameters.Init(phi, 90.0, 90.0 - best_psi_value[subtraction_image_counter], 0.0, 0.0); //phi
+                    mask_parameters.Init(RASTR_random_phi, 90.0, 90.0 - best_psi_value[subtraction_image_counter], 0.0, 0.0); //phi
 
                     mask_projection_image.Allocate(x_dim, y_dim, false); // false as it is in FS
                     padded_mask_projection_image.Allocate(padding_factor * x_dim, padding_factor * y_dim, false);
@@ -2532,7 +2696,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
                     // // generate the full rotation matrix
                     // Note: reversing order and negating angles to apply the inverse rotation
-                    RASTR_center_matrix.SetToEulerRotation(-(90.0 - best_psi_value[subtraction_image_counter]), -90.0, -phi); //-phi
+                    RASTR_center_matrix.SetToEulerRotation(-(90.0 - best_psi_value[subtraction_image_counter]), -90.0, -RASTR_random_phi); //-phi
 
                     //Maybe instead of using the x_mask_center use the adjusted_x_shift which is for the center of the tube instead of center of the mask to calculate the correct shift???
                     // RASTR_center_matrix.RotateCoords((x_mask_center - adjusted_x_shifts[image_counter] - current_image.physical_address_of_box_center_y), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z);
@@ -2547,7 +2711,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
                     // // generate the full rotation matrix
                     // Note: reversing order and negating angles to apply the inverse rotation
-                    RASTR_center_aligned_matrix.SetToEulerRotation(-90.0, -90.0, -phi); //-phi
+                    RASTR_center_aligned_matrix.SetToEulerRotation(-90.0, -90.0, -RASTR_random_phi); //-phi
 
                     //Maybe instead of using the x_mask_center use the adjusted_x_shift which is for the center of the tube instead of center of the mask to calculate the correct shift???
                     // RASTR_center_matrix.RotateCoords((x_mask_center - adjusted_x_shifts[image_counter] - current_image.physical_address_of_box_center_y), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z);
@@ -2643,9 +2807,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
             for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
 
-                // // use the random phi generated per image and keep adding the reference phi to it so each image has its own random starting phi
-                // float random_phi       = random_phi_angles[image_counter];
-                // float RASTR_random_phi = angle_within360(ref_phi + random_phi);
+                // use the random phi generated per image and keep adding the reference phi to it so each image has its own random starting phi
+                float random_phi       = random_phi_angles[image_counter];
+                float RASTR_random_phi = angle_within360(ref_phi + random_phi);
 
                 long current_counter                                                  = number_of_input_images * model_counter + image_counter; // This is for the position in the stack only
                 RASTR_output_params.all_parameters[current_counter].position_in_stack = current_counter + 1;
@@ -2680,7 +2844,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
                 RASTR_output_params.all_parameters[current_counter].theta = 90.0f;
 
-                RASTR_output_params.all_parameters[current_counter].phi                                = ref_phi;
+                RASTR_output_params.all_parameters[current_counter].phi                                = RASTR_random_phi; //ref_phi
                 RASTR_output_params.all_parameters[current_counter].defocus_1                          = ctf_parameters_stack[image_counter].defocus_1;
                 RASTR_output_params.all_parameters[current_counter].defocus_2                          = ctf_parameters_stack[image_counter].defocus_2;
                 RASTR_output_params.all_parameters[current_counter].defocus_angle                      = ctf_parameters_stack[image_counter].astigmatism_angle;
