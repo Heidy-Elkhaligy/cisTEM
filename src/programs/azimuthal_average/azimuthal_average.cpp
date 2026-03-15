@@ -2745,7 +2745,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     }
                     else if ( (align_upweighted == true && center_upweighted == true) ) {
                         subtracted_RASTR_image.Rotate2DInPlace(best_psi_value[subtraction_image_counter], FLT_MAX);
-
+                        //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                        // Depending on the value of the Phi, we may need to change the shift along x so that it all goes correctly to the center of the image.///
+                        //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                         //subtracted_RASTR_image.PhaseShift(adjusted_x_shifts[current_counter], 0.0); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
                         subtracted_RASTR_image.PhaseShift(RASTR_adjusted_center_aligned_x_shifts[subtraction_image_counter], RASTR_adjusted_center_aligned_y_shifts[subtraction_image_counter]); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
                         // should I change the above line to RASTR_adjusted_center_aligned_x_Shifts???
