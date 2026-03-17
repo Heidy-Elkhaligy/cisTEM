@@ -97,7 +97,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
     // The minimizer sometimes tries weird values
     if ( isnan(comparison_object->particle->alignment_parameters.ReturnShiftX( )) || fabsf(comparison_object->particle->alignment_parameters.ReturnShiftX( ) - comparison_object->initial_x_shift) > comparison_object->x_shift_limit )
         return 1;
-    if ( isnan(comparison_object->particle->alignment_parameters.ReturnShiftY( )) || fabsf(comparison_object->particle->alignment_parameters.ReturnShiftY( ) - comparison_object->initial_y_shift) > comparison_object->y_shift_limit )
+    if ( isnan(comparison_object->particle->alignment_parameters.ReturnShiftY( )) || fabsf(comparison_object->particle->alignment_parameters.ReturnShiftY( )) > comparison_object->y_shift_limit ) //- comparison_object->initial_y_shift
         return 1;
     if ( isnan(comparison_object->particle->alignment_parameters.ReturnPsiAngle( )) || fabsf(comparison_object->particle->alignment_parameters.ReturnPsiAngle( ) - comparison_object->initial_psi_angle) > comparison_object->angle_change_limit )
         return 1;
@@ -108,7 +108,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 
     if ( isnan(comparison_object->particle->temp_parameters.x_shift) || fabsf(comparison_object->particle->temp_parameters.x_shift - comparison_object->initial_x_shift) > comparison_object->x_shift_limit )
         return 1;
-    if ( isnan(comparison_object->particle->temp_parameters.y_shift) || fabsf(comparison_object->particle->temp_parameters.y_shift - comparison_object->initial_y_shift) > comparison_object->y_shift_limit )
+    if ( isnan(comparison_object->particle->temp_parameters.y_shift) || fabsf(comparison_object->particle->temp_parameters.y_shift) > comparison_object->y_shift_limit ) //- comparison_object->initial_y_shift
         return 1;
     if ( isnan(comparison_object->particle->temp_parameters.psi) || fabsf(comparison_object->particle->temp_parameters.psi - comparison_object->initial_psi_angle) > comparison_object->angle_change_limit )
         return 1;
