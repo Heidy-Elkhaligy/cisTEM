@@ -116,11 +116,6 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
         return 1;
     if ( isnan(comparison_object->particle->temp_parameters.theta) || fabsf(comparison_object->particle->temp_parameters.theta - comparison_object->initial_theta_angle) > comparison_object->angle_change_limit )
         return 1;
-
-    // // //Add high penalty if the Theta is not between 70-110 (90+/- 20 degrees)
-    // if ( comparison_object->particle->alignment_parameters.ReturnThetaAngle( ) < 70.0 || comparison_object->particle->alignment_parameters.ReturnThetaAngle( ) > 110.0 ) {
-    //     return 1;
-    // }
     /*
 	 *
 	float additional_penalty = 0;
@@ -715,8 +710,6 @@ bool Refine3DApp::DoCalculation( ) {
     output_star_file.AddCommentToHeader("# Threshold input reconstruction:          " + BoolToYesNo(threshold_input_3d));
     output_star_file.AddCommentToHeader("#");
 
-    normalize_particles = false;
-
     if ( ! refine_particle.parameter_map.phi && ! refine_particle.parameter_map.theta && ! refine_particle.parameter_map.psi && ! refine_particle.parameter_map.x_shift && ! refine_particle.parameter_map.y_shift ) {
         local_refinement = false;
         global_search    = false;
@@ -773,16 +766,6 @@ bool Refine3DApp::DoCalculation( ) {
     //	input_3d.density_map->AddConstant(- input_3d.density_map->ReturnAverageOfRealValuesOnEdges());
     // Remove masking here to avoid edge artifacts later
     input_3d.density_map->CosineMask(outer_mask_radius / pixel_size, mask_falloff / pixel_size, false, true, 0.0);
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // // IMPORTANT STEP: The mask here will be cylindrical instead of spherical
-    // Image slice_image;
-    // long  number_of_slices = input_file.ReturnNumberOfSlices( );
-    // for ( long slice_counter = 1; slice_counter <= number_of_slices; slice_counter++ ) {
-    //     //input_3d.density_map->CosineMask(outer_mask_radius / pixel_size, mask_falloff / pixel_size, false, true, 0.0);
-    //     slice_image.AllocateAsPointingToSliceIn3D(input_3d.density_map, slice_counter);
-    //     slice_image.CosineMask(outer_mask_radius / pixel_size, mask_falloff / pixel_size, false, true, 0.0);
-    // }
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     if ( inner_mask_radius > 0.0 )
         input_3d.density_map->CosineMask(inner_mask_radius / pixel_size, mask_falloff / pixel_size, true);
     //	for (i = 0; i < input_3d.density_map->real_memory_allocated; i++) if (input_3d.density_map->real_values[i] < 0.0) input_3d.density_map->real_values[i] = -log(-input_3d.density_map->real_values[i] + 1.0);
@@ -823,17 +806,10 @@ bool Refine3DApp::DoCalculation( ) {
         //Scale to make projections compatible with images for ML calculation
         search_reference_3d.density_map->MultiplyByConstant(powf(powf(binning_factor_search, 1.0 / 3.0), 2));
         //if (angular_step <= 0) angular_step = 360.0 * high_resolution_limit_search / PI / outer_mask_radius;
-        wxPrintf("Angular step size at the begining of the code %f \n", angular_step);
         if ( angular_step <= 0 )
             angular_step = CalculateAngularStep(high_resolution_limit_search, outer_mask_radius);
-        wxPrintf("Outer mask radius is %f \n", outer_mask_radius);
-
-        psi_step = rad_2_deg((search_reference_3d.pixel_size) / outer_mask_radius); // psi depend on mask radius and pixel size
-        wxPrintf("Psi step size after first calculation at the begining of the code %f \n", psi_step);
-
-        psi_step = (360.0 / int(360.0 / psi_step + 0.5)) / 2; // I added divided 2 to make the step size even smaller to ensure the search +/- 10 degrees have enough projections
-        wxPrintf("Psi step size after second calculation at the begining of the code %f \n", psi_step);
-
+        psi_step  = rad_2_deg(search_reference_3d.pixel_size / outer_mask_radius);
+        psi_step  = 360.0 / int(360.0 / psi_step + 0.5);
         psi_start = psi_step / 2.0 * global_random_number_generator.GetUniformRandom( );
         psi_max   = 0.0;
         if ( refine_particle.parameter_map.psi )
@@ -843,7 +819,7 @@ bool Refine3DApp::DoCalculation( ) {
 
     if ( padding != 1.0 ) {
         input_3d.density_map->Resize(input_3d.density_map->logical_x_dimension * padding, input_3d.density_map->logical_y_dimension * padding, input_3d.density_map->logical_z_dimension * padding, input_3d.density_map->ReturnAverageOfRealValuesOnEdges( ));
-        //		refine_statistics.part_SSNR.ResampleCurve(&refine_statistics.part_SSNR, refine_statistics.part_SSNR.number_of_points * padding);
+        //		refine_statistics.part_SSNR.ResampleCurve(&refine_statistics.part_SSNR, refine_statistics.part_SSNR.NumberOfPoints( ) * padding);
     }
 
     //	input_3d.PrepareForProjections(high_resolution_limit);
@@ -883,12 +859,15 @@ bool Refine3DApp::DoCalculation( ) {
         percentage         = float(max_samples) / float(images_to_process) / random_reset_count;
         sum_power.SetToConstant(0.0f);
         number_of_blank_edges = 0;
-        noise_power_spectrum.SetupXAxis(0.0f, 0.5f * sqrtf(2.0f), int((sum_power.logical_x_dimension / 2.0f + 1.0f) * sqrtf(2.0f) + 1.0f));
-        number_of_terms.SetupXAxis(0.0f, 0.5f * sqrtf(2.0f), int((sum_power.logical_x_dimension / 2.0f + 1.0f) * sqrtf(2.0f) + 1.0f));
+        noise_power_spectrum.SetupXAxisForFourierSpace(sum_power.logical_x_dimension, 2.f);
+        number_of_terms.SetupXAxisForFourierSpace(sum_power.logical_x_dimension, 2.f);
         if ( is_running_locally == true )
             my_progress = new ProgressBar(images_to_process / max_threads);
         current_line         = 0;
         random_reset_counter = 0;
+
+        noise_power_spectrum.MakeThreadSafeForNThreads(max_threads);
+        number_of_terms.MakeThreadSafeForNThreads(max_threads);
 
 #pragma omp parallel num_threads(max_threads) default(none) shared(input_star_file, first_particle, last_particle, my_progress, percentage, exclude_blank_edges, input_stack,                                                                                                                                                                                                                                  \
                                                                    outer_mask_radius, mask_falloff, number_of_blank_edges, sum_power, current_line, global_random_number_generator, random_reset_count, random_reset_counter) private(current_line_local, input_parameters, image_counter, number_of_blank_edges_local, variance, temp_image_local, sum_power_local, input_image_local, temp_float, file_read, \
@@ -976,8 +955,6 @@ bool Refine3DApp::DoCalculation( ) {
         }
     }
 
-    // adding tube_theta_start so it restrict from here and also in euler search
-    //float tube_theta_start = 70.0; // MAYBE THIS IS WHAT CAUSING SOME PROBLEMS WHEN TRYING 0-180 or 0-90 CHECK
     if ( global_search ) {
         //for (i = 0; i < search_particle.number_of_parameters; i++) {search_particle.parameter_map[i] = refine_particle.parameter_map[i];}
         search_particle.parameter_map = refine_particle.parameter_map;
@@ -989,11 +966,9 @@ bool Refine3DApp::DoCalculation( ) {
         //for (i = 0; i < search_particle.number_of_parameters; i++) {search_particle.constraints_used[i] = refine_particle.constraints_used[i];}
         search_particle.SetParameterStatistics(parameter_average, parameter_variance);
 
-        wxPrintf("Angular step size in global search loop before initGrid %f \n", angular_step);
-        wxPrintf("Psi step size in global search loop before initGrid %f \n", psi_step);
         // Use projection_cache only if both phi and theta are searched; otherwise calculate projections on the fly
         if ( search_particle.parameter_map.phi && search_particle.parameter_map.theta ) {
-            global_euler_search.InitGrid(my_symmetry, angular_step, 0.0, 0.0, psi_max, psi_step, psi_start, search_reference_3d.pixel_size / high_resolution_limit_search, search_particle.parameter_map, best_parameters_to_keep);
+            global_euler_search.InitGrid(my_symmetry, angular_step, input_parameters.phi, 0.0, psi_max, psi_step, psi_start, search_reference_3d.pixel_size / high_resolution_limit_search, search_particle.parameter_map, best_parameters_to_keep);
             if ( global_euler_search.best_parameters_to_keep != best_parameters_to_keep )
                 best_parameters_to_keep = global_euler_search.best_parameters_to_keep;
             projection_cache = new Image[global_euler_search.number_of_search_positions];
@@ -1022,8 +997,8 @@ bool Refine3DApp::DoCalculation( ) {
         my_progress = new ProgressBar(images_to_process / max_threads);
 
     current_projection = 0;
-//max_search_x, max_search_y,
-#pragma omp parallel num_threads(max_threads) default(none) shared(parameter_average, input_3d, input_star_file, input_stack, max_threads, search_particle, max_search_x, max_search_y,                                                                                                                                                  \
+
+#pragma omp parallel num_threads(max_threads) default(none) shared(parameter_average, input_3d, input_star_file, input_stack, max_threads, search_particle,                                                                                                                                                                              \
                                                                    first_particle, last_particle, invert_contrast, normalize_particles, noise_power_spectrum, padding, ctf_refinement, defocus_search_range, defocus_step, normalize_input_3d,                                                                                           \
                                                                    refine_statistics, pixel_size, my_progress, outer_mask_radius, mask_falloff, high_resolution_limit, molecular_mass_kDa, percent_used, output_shifts_file, local_refinement,                                                                                           \
                                                                    binning_factor_refine, low_resolution_limit, input_statistics, output_star_file, current_projection, local_global_refine, signed_CC_limit, defocus_bias,                                                                                                              \
@@ -1080,7 +1055,7 @@ bool Refine3DApp::DoCalculation( ) {
             MyDebugAssertFalse(input_image_local.HasNan( ), "Input image read from disk has NaN. Position in stack = %i\n", input_parameters.position_in_stack);
 
             image_counter++;
-            wxPrintf("Image position in stack is %i \n", input_parameters.position_in_stack);
+
             output_parameters = input_parameters;
 
             temp_float = random_particle.GetUniformRandom( );
@@ -1126,17 +1101,6 @@ bool Refine3DApp::DoCalculation( ) {
                     gui_result_parameters[22] = input_parameters.image_shift_x;
                     gui_result_parameters[23] = input_parameters.image_shift_y;
                     gui_result_parameters[24] = input_parameters.amplitude_contrast;
-                    // gui_result_parameters[25] = input_parameters.assigned_subset;
-                    // This part may not be needed  (I am keeping it in case I used an old refinement that wasnot assigned the odd and even particles in assigned subsets)
-                    // Set assigned subset: 1 for odd particle numbers, 2 for even for correct FSC calculations
-                    if ( input_parameters.position_in_stack % 2 == 1 ) {
-                        input_parameters.assigned_subset = 1; // Odd particle number
-                    }
-                    else {
-                        input_parameters.assigned_subset = 2; // Even particle number
-                    }
-
-                    // Now store this updated value
                     gui_result_parameters[25] = input_parameters.assigned_subset;
 
                     intermediate_result->SetResult(26, gui_result_parameters);
@@ -1189,9 +1153,9 @@ bool Refine3DApp::DoCalculation( ) {
             comparison_object.initial_psi_angle   = refine_particle_local.alignment_parameters.ReturnPsiAngle( );
             comparison_object.initial_theta_angle = refine_particle_local.alignment_parameters.ReturnThetaAngle( );
             comparison_object.initial_phi_angle   = refine_particle_local.alignment_parameters.ReturnPhiAngle( );
-            // changed those so that the max x and y shift used is based on user input that was ignored before
-            comparison_object.x_shift_limit = max_search_x;
-            comparison_object.y_shift_limit = max_search_y;
+
+            //comparison_object.x_shift_limit = 2;
+            //comparison_object.y_shift_limit = 2;
             //comparison_object.angle_change_limit = 2;
 
             if ( refine_particle_local.parameter_map.x_shift )
@@ -1363,11 +1327,9 @@ bool Refine3DApp::DoCalculation( ) {
                     search_particle_local.PhaseShift( );
                     //				search_particle_local.CenterInCorner();
                     //				search_particle_local.WeightBySSNR(search_reference_3d_local.statistics.part_SSNR);
-                    wxPrintf("Angular step size inside global_search_local loop %f \n", angular_step);
-                    wxPrintf("Psi step size inside global_search_local loop %f \n", psi_step);
 
                     if ( search_particle_local.parameter_map.phi && ! search_particle_local.parameter_map.theta ) {
-                        euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, input_parameters.theta, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
+                        euler_search_local.InitGrid(my_symmetry, angular_step, input_parameters.phi, input_parameters.theta, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
                         if ( euler_search_local.best_parameters_to_keep != best_parameters_to_keep )
                             best_parameters_to_keep = euler_search_local.best_parameters_to_keep;
                         if ( ! search_particle_local.parameter_map.phi )
@@ -1399,7 +1361,7 @@ bool Refine3DApp::DoCalculation( ) {
                         euler_search_local.Run(search_particle_local, *search_reference_3d_local.density_map, projection_cache);
                     }
                     else {
-                        euler_search_local.InitGrid(my_symmetry, angular_step, 0.0, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
+                        euler_search_local.InitGrid(my_symmetry, angular_step, input_parameters.phi, 0.0, psi_max, psi_step, psi_start, search_reference_3d_local.pixel_size / high_resolution_limit_search, search_particle_local.parameter_map, best_parameters_to_keep);
                         euler_search_local.psi_start = 360.0 - input_parameters.phi;
                         best_parameters_to_keep      = 1;
                     }
@@ -1415,11 +1377,7 @@ bool Refine3DApp::DoCalculation( ) {
 
                     //for (i = 0; i < search_particle_local.number_of_parameters; i++) {search_parameters[i] = input_parameters[i];}
                     //for (j = 1; j < 6; j++) {euler_search_local.list_of_best_parameters[0][j - 1] = input_parameters[j];}
-                    // //Printing global parameters as the local Theta goes outside the range??
-                    // for ( i = 1; i <= best_parameters_to_keep; i++ ) {
-                    //     wxPrintf("Global parameters in  = %i %f, %f, %f, %f, %f %f\n", i, euler_search_local.list_of_best_parameters[i][2], euler_search_local.list_of_best_parameters[i][1],
-                    //              euler_search_local.list_of_best_parameters[i][0], euler_search_local.list_of_best_parameters[i][3], euler_search_local.list_of_best_parameters[i][4], euler_search_local.list_of_best_parameters[i][5]);
-                    // }
+
                     search_particle_local.SetParameterConstraints(powf(parameter_average.sigma, 2));
                     comparison_object.reference_volume = &search_reference_3d_local;
                     comparison_object.projection_image = &search_projection_image;
@@ -1442,7 +1400,7 @@ bool Refine3DApp::DoCalculation( ) {
                         float worst_value = euler_search_local.list_of_best_parameters[best_parameters_to_keep][5];
                         ;
                         float diff           = best_value - worst_value;
-                        float top_percent    = best_value - (diff * 0.3); // changed from 0.15
+                        float top_percent    = best_value - (diff * 0.15);
                         int   number_to_keep = 1;
 
                         for ( int counter = 2; counter <= best_parameters_to_keep; counter++ ) {
@@ -1490,6 +1448,8 @@ bool Refine3DApp::DoCalculation( ) {
                             search_parameters.x_shift = euler_search_local.list_of_best_parameters[i][3];
                             search_parameters.y_shift = euler_search_local.list_of_best_parameters[i][4];
 
+                            //					wxPrintf("parameters in  = %i %g, %g, %g, %g, %g %g\n", i, search_parameters[3], search_parameters[2],
+                            //							search_parameters[1], search_parameters[4], search_parameters[5], euler_search_local.list_of_best_parameters[i][5]);
                             if ( ! search_particle_local.parameter_map.x_shift )
                                 search_parameters.x_shift = input_parameters.x_shift;
                             if ( ! search_particle_local.parameter_map.y_shift )
@@ -1525,16 +1485,14 @@ bool Refine3DApp::DoCalculation( ) {
                                 //						wxPrintf("parameters out = %g, %g, %g, %g, %g\n", output_parameters[3], output_parameters[2],
                                 //								output_parameters[1], output_parameters[4], output_parameters[5]);
                             }
-                            //wxPrintf("refine in, out, keep = %i %g %g %g\n", i, search_parameters.score, temp_float, output_parameters.score);
+                            //					wxPrintf("refine in, out, keep = %i %g %g %g\n", i, search_parameters[15], temp_float, output_parameters[15]);
+                            //					wxPrintf("parameters out = %g, %g, %g, %g, %g\n", output_parameters[3], output_parameters[2],
+                            //							output_parameters[1], output_parameters[4], output_parameters[5]);
                         }
                     }
                     refine_particle_local.SetParameters(output_parameters, true);
                     output_parameters.score_change = output_parameters.score - input_parameters.score;
                     //				my_time_out = wxDateTime::UNow(); wxPrintf("global search done: ms taken = %li\n", my_time_out.Subtract(my_time_in).GetMilliseconds());
-                    //for ( i = 1; i <= best_parameters_to_keep; i++ ) {
-                    wxPrintf("parameters out =  %g, %g, %g, %g, %g\n", output_parameters.psi, output_parameters.theta,
-                             output_parameters.phi, output_parameters.x_shift, output_parameters.y_shift);
-                    //}
                 }
 
                 if ( local_refinement_local ) {
@@ -1676,18 +1634,7 @@ bool Refine3DApp::DoCalculation( ) {
                 gui_result_parameters[22] = output_parameters.image_shift_x;
                 gui_result_parameters[23] = output_parameters.image_shift_y;
                 gui_result_parameters[24] = output_parameters.amplitude_contrast;
-                // gui_result_parameters[25] = output_parameters.assigned_subset;
-                // This part may not be needed  (I am keeping it in case I used an old refinement that wasnot assigned the odd and even particles in assigned subsets)
-                // Set assigned subset: 1 for odd particle numbers, 2 for even for correct FSC calculations
-                if ( input_parameters.position_in_stack % 2 == 1 ) {
-                    input_parameters.assigned_subset = 1; // Odd particle number
-                }
-                else {
-                    input_parameters.assigned_subset = 2; // Even particle number
-                }
-
-                // // Now store this updated value
-                gui_result_parameters[25] = input_parameters.assigned_subset;
+                gui_result_parameters[25] = output_parameters.assigned_subset;
 
                 intermediate_result->SetResult(26, gui_result_parameters);
                 AddJobToResultQueue(intermediate_result);
