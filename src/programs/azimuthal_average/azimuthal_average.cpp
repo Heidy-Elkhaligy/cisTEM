@@ -2722,7 +2722,16 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     // This line is working but center the aligend images to the position of the mask in 3d
                     // can subtracting the RASTR adj shift from the (x_mask_center - current_image.physical_address_of_box_center) vertically center the aligned upweighted regions to the center
                     //RASTR_center_aligned_matrix.RotateCoords((adjusted_x_shifts[subtraction_image_counter]), (0.0), (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
-                    RASTR_center_aligned_matrix.RotateCoords((RASTR_adjusted_x_shifts[subtraction_image_counter]), (0.0), (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
+                    //RASTR_center_aligned_matrix.RotateCoords((RASTR_adjusted_x_shifts[subtraction_image_counter]), (0.0), (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
+                    // I forgot to use the RASTR_Adjusted_center_x_shifts instead of RASTR adjusted_shifts to center the upweighted regions to the middle of the sphere
+                    // The question here do I need to also include the RASTR_adjusted_center_y_shifts ????
+                    //RASTR_center_aligned_matrix.RotateCoords((RASTR_adjusted_center_x_shifts[subtraction_image_counter]), (0.0), (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
+                    RASTR_center_aligned_matrix.RotateCoords((RASTR_adjusted_center_x_shifts[subtraction_image_counter]), (RASTR_adjusted_center_y_shifts[subtraction_image_counter]), (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
+
+                    //TODO:
+                    // I will go back to the RASTR adjusted x and y shifts as inputs
+                    //RASTR_center_aligned_matrix.RotateCoords((RASTR_adjusted_x_shifts[subtraction_image_counter]), RASTR_adjusted_y_shifts[subtraction_image_counter], (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
+
                     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -2749,7 +2758,10 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                         // Depending on the value of the Phi, we may need to change the shift along x so that it all goes correctly to the center of the image.///
                         //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                         //subtracted_RASTR_image.PhaseShift(adjusted_x_shifts[current_counter], 0.0); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
-                        subtracted_RASTR_image.PhaseShift(RASTR_adjusted_center_aligned_x_shifts[subtraction_image_counter], RASTR_adjusted_center_aligned_y_shifts[subtraction_image_counter]); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
+
+                        subtracted_RASTR_image.PhaseShift(RASTR_adjusted_x_shifts[current_counter], RASTR_adjusted_y_shifts[current_counter]);
+
+                        //subtracted_RASTR_image.PhaseShift(RASTR_adjusted_center_aligned_x_shifts[subtraction_image_counter], RASTR_adjusted_center_aligned_y_shifts[subtraction_image_counter]); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
                         // should I change the above line to RASTR_adjusted_center_aligned_x_Shifts???
 #pragma omp critical
                         subtracted_RASTR_image.WriteSlice(&my_output_RASTR_filename, current_counter + 1);
