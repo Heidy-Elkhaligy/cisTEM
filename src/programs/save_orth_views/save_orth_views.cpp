@@ -225,11 +225,15 @@ bool SaveOrthViews::DoCalculation( ) {
     wxPrintf("\nMaking orth views image...\n");
 
     my_input_volume.ReadSlices(&input3d_file, 1, input3d_file.ReturnNumberOfSlices( ));
+    /////////////////////////////////////////////////////////////////////////////
+    // Old make orthogonal views which saves all images in one large image
+    ////////////////////////////////////////////////////////////////////////////////
     // my_orth_views_image.Allocate(my_input_volume.logical_x_dimension * 3, my_input_volume.logical_y_dimension * 2, 1, true);
     // my_input_volume.CreateOrthogonalProjectionsImage(&my_orth_views_image);
     // my_orth_views_image.WriteSlice(&output_file, 1);
     OrthogonalViews views = CreateOrthogonalViewsAndSave(my_input_volume, true, 1.0f, 0.0f);
 
+    // Saving each orthogonal view independently so it can be used later for 1D projections or any analysis
     views.slice_x.WriteSlice(&output_file, 1);
     views.slice_y.WriteSlice(&output_file, 2);
     views.slice_z.WriteSlice(&output_file, 3);
