@@ -369,6 +369,7 @@ class
     bool show_label;
     bool show_crosshair;
     bool single_image;
+    bool draw_scale_bar;
 
     bool txt_is_saved;
     bool have_txt_filename;
@@ -379,8 +380,6 @@ class
 
     int  label_mode;
     bool image_picking_mode_enabled;
-    bool coords_picking_mode_enabled;
-    bool filament_picking_mode_enabled;
 
     wxBitmap panel_bitmap;
 

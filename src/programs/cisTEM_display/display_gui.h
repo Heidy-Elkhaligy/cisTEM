@@ -75,6 +75,7 @@ class DisplayFrameParent : public wxFrame {
     wxMenu*     DisplaySelectMenu;
     wxMenuItem* SelectImageSelectionMode;
     wxMenuItem* SelectCoordsSelectionMode;
+    wxMenuItem* SelectFilamentSelectionMode;
     wxMenuItem* SelectInvertSelection;
     wxMenuItem* SelectClearSelection;
     wxMenu*     DisplayOptionsMenu;
@@ -116,6 +117,8 @@ class DisplayFrameParent : public wxFrame {
     virtual void OnImageSelectionModeClick(wxCommandEvent& event) { event.Skip( ); }
 
     virtual void OnCoordsSelectionModeClick(wxCommandEvent& event) { event.Skip( ); }
+
+    //virtual void OnFilamentSelectionModeClick(wxCommandEvent& event) { event.Skip( ); }
 
     virtual void OnInvertSelectionClick(wxCommandEvent& event) { event.Skip( ); }
 

@@ -130,6 +130,9 @@ class MyRefine3DPanel : public Refine3DPanel {
     void ResetAllDefaultsClick(wxCommandEvent& event);
     void OnHighResLimitChange(wxCommandEvent& event);
 
+    // adding helical reconstruction check box to use the adjusted refine3d code instead of normal refine3d code
+    void OnHelicalReconstructionCheckBox(wxCommandEvent& event);
+
     void OnUseMaskCheckBox(wxCommandEvent& event);
     void OnAutoMaskButton(wxCommandEvent& event);
 

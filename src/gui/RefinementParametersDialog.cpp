@@ -16,7 +16,7 @@ RefinementParametersDialog::RefinementParametersDialog(wxWindow* parent, wxWindo
 
     current_class = 0;
     ParameterListCtrl->SetParent(this);
-
+    // Those are the column names in the par file that opens in the 3D refinement results
     ParameterListCtrl->Freeze( );
     ParameterListCtrl->ClearAll( );
     ParameterListCtrl->InsertColumn(0, wxT("Position In Stack."), wxLIST_FORMAT_CENTRE, wxLIST_AUTOSIZE_USEHEADER);

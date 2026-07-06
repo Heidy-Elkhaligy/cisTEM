@@ -407,7 +407,6 @@ void DisplayPanel::OnOpen(wxCommandEvent& WXUNUSED(event)) {
             extension is included in this list, which is not robust against the various extensions that
             could exist*/
             OpenFile(path, this_filename);
-            ReturnCurrentPanel( )->short_image_filename = this_filename;
         }
         else
             wxMessageBox(wxT("This file is not a compatible type; must be mrc file format."), wxT("Error"), wxOK | wxICON_INFORMATION);
@@ -854,6 +853,8 @@ void DisplayPanel::OpenFile(wxString wanted_filename, wxString wanted_tab_title,
         wxMessageBox(wxString::Format("Error, Cannot open file (%s)", wanted_filename), wxT("Error"), wxOK | wxICON_INFORMATION, this);
         return;
     }
+
+    my_panel->short_image_filename = wanted_tab_title;
 
     // which images are we including..
 
@@ -1432,6 +1433,7 @@ DisplayNotebookPanel::DisplayNotebookPanel(wxWindow* parent, wxWindowID id, cons
     use_7bit_greys               = false;
     show_selection_distances     = false;
     resolution_instead_of_radius = false;
+    draw_scale_bar               = false;
 
     blue_selection_square_location = -1;
 
@@ -1633,7 +1635,8 @@ void DisplayNotebookPanel::UpdateImageStatusInfo(int x_pos, int y_pos) {
         else {
             wxString StatusText = wxT("");
 
-            // 		if (selected_distance != 0 && show_selection_distances ) StatusText += wxT("Dist=") + wxString::Format(wxT("%f"), selected_distance);
+            if ( selected_distance != 0 && show_selection_distances )
+                StatusText += wxT("Dist=") + wxString::Format(wxT("%f"), selected_distance);
             // 		if (image_picking_mode_enabled == INTEGRATE_PICK && integrate_box_x_pos != -1 && integrate_box_y_pos != -1) StatusText += wxT(" Integrated Value =") + wxString::Format(wxT("%f"), integrated_value);
             parent_display_panel->StatusText->SetLabel(StatusText);
         }
@@ -2000,7 +2003,7 @@ void DisplayNotebookPanel::OnLeftDown(wxMouseEvent& event) {
 
                     parent_display_panel->SetTabNameUnsaved( );
                 }
-                else if ( coords_picking_mode_enabled ) {
+                else if ( ! image_picking_mode_enabled ) {
                     coord_tracker->ToggleCoord(current_image, current_x_pos, current_y_pos);
                     parent_display_panel->SetTabNameUnsaved( );
                 }
@@ -2337,8 +2340,17 @@ void DisplayNotebookPanel::ReDrawPanel(void) {
             images_in_x            = 1;
             images_in_y            = 1;
         }
-        else
-            images_in_current_view = images_in_x * images_in_y;
+        else {
+            // Checks if the number of images that will be displayed on the panel will fill the available
+            // space; if not, then we adjust the images_in_current_view to be accurate.
+            const int imgs_remaining = ReturnNumberofImages( ) + 1 - current_location;
+            if ( imgs_remaining < images_in_x * images_in_y ) {
+                images_in_current_view = imgs_remaining;
+            }
+            else {
+                images_in_current_view = images_in_x * images_in_y;
+            }
+        }
 
         if ( current_location != location_on_last_draw || images_in_x != images_in_x_on_last_draw || images_in_y != images_in_y_on_last_draw ) {
             //dc.Clear();
@@ -2896,6 +2908,63 @@ void DisplayNotebookPanel::OnPaint(wxPaintEvent& evt) {
                         counter++;
                     }
                 }
+            }
+
+            // Scale bar overlay (single-image mode only)
+            if ( draw_scale_bar && single_image ) {
+                // Compute the actual screen-pixel extent of the drawn image,
+                // which may be smaller than the window if the image is small.
+                int image_screen_width  = panel_image->GetWidth( ) - int(single_image_x * actual_scale_factor);
+                int image_screen_height = panel_image->GetHeight( ) - int(single_image_y * actual_scale_factor);
+                if ( image_screen_width > window_x_size )
+                    image_screen_width = window_x_size;
+                if ( image_screen_height > window_y_size )
+                    image_screen_height = window_y_size;
+
+                // Å per screen pixel, then *0.1 converts Å→nm in the formula
+                const float image_in_bitmap_pixel_size = pixel_size / actual_scale_factor;
+
+                int scalebar_length;
+                {
+                    const float bar_must_be_multiple_of = 5.0f; // nm
+                    float       ideal_length_in_pixels  = float(image_screen_width) * 0.1f;
+                    float       ideal_length_in_nm      = ideal_length_in_pixels * image_in_bitmap_pixel_size * 0.1f;
+                    ideal_length_in_nm                  = roundf(ideal_length_in_nm / bar_must_be_multiple_of) * bar_must_be_multiple_of;
+                    if ( ideal_length_in_nm < bar_must_be_multiple_of )
+                        ideal_length_in_nm = bar_must_be_multiple_of;
+                    ideal_length_in_pixels = ideal_length_in_nm * 10.0f / image_in_bitmap_pixel_size;
+                    scalebar_length        = myroundint(ideal_length_in_pixels);
+                }
+
+                int scalebar_thickness = int(float(image_screen_height) / 50.0f);
+                if ( scalebar_thickness < 2 )
+                    scalebar_thickness = 2;
+
+                int scalebar_x_start = int(float(image_screen_width) * 0.85f) - scalebar_length / 2;
+                int scalebar_y_pos   = int(float(image_screen_height) * 0.95f) - scalebar_thickness;
+
+                // Clamp so the bar never spills outside the image area
+                if ( scalebar_x_start < 0 )
+                    scalebar_x_start = 0;
+                if ( scalebar_x_start + scalebar_length > image_screen_width )
+                    scalebar_x_start = image_screen_width - scalebar_length;
+
+                wxPen scalebar_pen(*wxWHITE);
+                dc.SetPen(scalebar_pen);
+                dc.SetBrush(*wxWHITE_BRUSH);
+                dc.DrawRectangle(scalebar_x_start, scalebar_y_pos, scalebar_length, scalebar_thickness);
+
+                dc.SetTextForeground(*wxWHITE);
+                int label_font_size = std::max(9, int(float(scalebar_thickness) * 0.75f));
+                dc.SetFont(wxFont(label_font_size, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
+
+                wxString scalebar_label = wxString::Format("%.0f nm", float(scalebar_length) * image_in_bitmap_pixel_size * 0.1f);
+                int      scalebar_label_width;
+                int      scalebar_label_height;
+                dc.GetTextExtent(scalebar_label, &scalebar_label_width, &scalebar_label_height);
+                dc.DrawText(scalebar_label,
+                            scalebar_x_start + scalebar_length / 2 - scalebar_label_width / 2,
+                            scalebar_y_pos - scalebar_label_height - scalebar_thickness / 8);
             }
         }
     }

@@ -13,6 +13,7 @@ class DisplayFrame : public DisplayFrameParent {
     //Additional functions
     void DisableAllToolbarButtons( );
     void EnableAllToolbarButtons( );
+    void OnServerOpenFile(wxCommandEvent& event);
 
     // GUI event functions
     void OnCharHook(wxKeyEvent& event);
@@ -20,16 +21,18 @@ class DisplayFrame : public DisplayFrameParent {
 
     // File menu
     void OnFileOpenClick(wxCommandEvent& event);
+    void OnSaveDisplayedImagesClick(wxCommandEvent& event);
+    void OnSaveDisplayedImagesWithLegendClick(wxCommandEvent& event);
     void OnCloseTabClick(wxCommandEvent& event);
     void OnExitClick(wxCommandEvent& event);
 
     // Label menu
     void OnLocationNumberClick(wxCommandEvent& event);
+    void OnLabelScaleBarClick(wxCommandEvent& event);
 
     // Select menu
     void OnImageSelectionModeClick(wxCommandEvent& event);
     void OnCoordsSelectionModeClick(wxCommandEvent& event);
-    void OnFilamentSelectionModeClick(wxCommandEvent& event);
     void OnOpenTxtClick(wxCommandEvent& event);
     void OnSaveTxtClick(wxCommandEvent& event);
     void OnSaveTxtAsClick(wxCommandEvent& event);
@@ -47,15 +50,16 @@ class DisplayFrame : public DisplayFrameParent {
 
     // Help menu
     void OnDocumentationClick(wxCommandEvent& event);
+    void OnDisplayControlsClick(wxCommandEvent& event);
 
   private:
     bool     is_fullscreen;
     wxString remember_path;
-    bool     LoadCoords(std::istringstream& current_line, long& x, long& y, long& image_number);
-    bool     LoadImageSelections(std::istringstream& current_line);
-    bool     CheckIfImagesAreSelectedAndIssueWarning( );
-    bool     CheckIfCoordsAreSelectedAndIssueWarning( );
+    bool     LoadCoords(wxString current_line, long& x, long& y, long& image_number);
+    bool     LoadImageSelections(wxString current_line);
     void     ClearTextFileFromPanel( );
+    wxBitmap CropImageForSaving( );
+    void     DrawScaleBarOnBitmap(wxBitmap& target_bitmap);
 };
 
 #endif

@@ -334,7 +334,7 @@
                         <event name="OnMenuSelection">OnLabelScaleBarClick</event>
                     </object>
                 </object>
-                <object class="wxMenu" expanded="0">
+                <object class="wxMenu" expanded="1">
                     <property name="label">Select</property>
                     <property name="name">DisplaySelectMenu</property>
                     <property name="permission">protected</property>
@@ -365,6 +365,20 @@
                         <property name="shortcut"></property>
                         <property name="unchecked_bitmap"></property>
                         <event name="OnMenuSelection">OnCoordsSelectionModeClick</event>
+                    </object>
+                    <object class="wxMenuItem" expanded="1">
+                        <property name="bitmap"></property>
+                        <property name="checked">0</property>
+                        <property name="enabled">0</property>
+                        <property name="help"></property>
+                        <property name="id">wxID_ANY</property>
+                        <property name="kind">wxITEM_RADIO</property>
+                        <property name="label">Filament Selection Mode</property>
+                        <property name="name">SelectFilamentSelectionMode</property>
+                        <property name="permission">protected</property>
+                        <property name="shortcut"></property>
+                        <property name="unchecked_bitmap"></property>
+                        <event name="OnMenuSelection">OnImageSelectionModeClick</event>
                     </object>
                     <object class="separator" expanded="0">
                         <property name="name">m_separator5</property>

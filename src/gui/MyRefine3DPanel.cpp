@@ -84,6 +84,7 @@ void MyRefine3DPanel::Reset( ) {
     ShowRefinementResultsPanel->Clear( );
 
     UseMaskCheckBox->SetValue(false);
+    HelicalReconstructionCheckBox->SetValue(false);
     LocalRefinementRadio->SetValue(true);
     NumberRoundsSpinCtrl->SetValue(1);
     HighResolutionLimitTextCtrl->ChangeValueFloat(30.0f);
