@@ -26,6 +26,7 @@ class CoordTracker {
     DisplayNotebookPanel* parent_notebook;
     long                  number_of_coords;
     long                  number_allocated;
+    long                  last_selected_image = -1;
     Coord*                coords;
 
     CoordTracker(wxWindow* parent);
@@ -36,6 +37,13 @@ class CoordTracker {
     void AddCoord(long wanted_image, long wanted_x, long wanted_y);
     void RemoveCoord(long coord_to_remove);
     void RectangleRemoveCoord(long wanted_image, long start_x, long start_y, long end_x, long end_y);
+};
+
+// Adding a new selection option for what mode to be active
+enum SelectionMode {
+    MODE_IMAGE,
+    MODE_COORDS,
+    MODE_FILAMENT
 };
 
 class
@@ -83,6 +91,9 @@ class
     void ToggleImageSelected(long wanted_image, bool refresh = true);
     void ClearSelection(bool refresh = true);
     bool IsImageSelected(long wanted_image);
+
+    // add the selection mode function
+    void SetActiveSelectionMode(SelectionMode mode);
 
     void SetActiveTemplateMatchMarkerPostion(float wanted_x_pos, float wanted_y_pos, float wanted_radius);
     void ClearActiveTemplateMatchMarker( );
@@ -379,7 +390,7 @@ class
 
     int  label_mode;
     bool image_picking_mode_enabled;
-    bool coords_picking_mode_enabled;
+    bool coords_mode_enabled;
     bool filament_picking_mode_enabled;
 
     wxBitmap panel_bitmap;

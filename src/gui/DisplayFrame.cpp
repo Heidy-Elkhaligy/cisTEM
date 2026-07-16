@@ -1,4 +1,7 @@
 #include "../core/gui_core_headers.h"
+#include <map>
+#include <vector>
+#include <wx/msgdlg.h> // For wxMessageBox
 
 DisplayFrame::DisplayFrame(wxWindow* parent, wxWindowID id, const wxString& title, const wxPoint& pos, const wxSize& size, long style)
     : DisplayFrameParent(NULL, wxID_ANY, title, pos, size, style) {
@@ -84,50 +87,81 @@ void DisplayFrame::OnLocationNumberClick(wxCommandEvent& event) {
 void DisplayFrame::OnImageSelectionModeClick(wxCommandEvent& event) {
     // if we are already in selections mode, we don't want to do anything, so
     // make a check.
-    if ( ! CheckIfCoordsAreSelectedAndIssueWarning( ) )
-        cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->Clear( );
+    if ( ! cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled ) {
+        if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->number_of_coords > 0 ) {
+            wxMessageDialog question_dialog(this, "By switching the selection mode, you will lose your current coordinates selections if they are unsaved.\nDo you want to continue?", "Swtich Selection Modes?", wxYES_NO | wxNO_DEFAULT | wxICON_EXCLAMATION);
 
-    cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled    = true;
-    cisTEMDisplayPanel->ReturnCurrentPanel( )->coords_picking_mode_enabled   = false;
-    cisTEMDisplayPanel->ReturnCurrentPanel( )->filament_picking_mode_enabled = false;
-    SelectInvertSelection->Enable(true);
+            if ( question_dialog.ShowModal( ) == wxID_YES ) {
+                cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->Clear( );
+                cisTEMDisplayPanel->SetActiveSelectionMode(MODE_IMAGE);
+                // cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled = true;
+                SelectInvertSelection->Enable(true);
+            }
 
-    ClearTextFileFromPanel( );
-    Refresh( );
-    Update( );
+            // User does not want to switch; do nothing
+            else
+                return;
+        }
+        else
+            cisTEMDisplayPanel->SetActiveSelectionMode(MODE_IMAGE);
+        // cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled = true;
+
+        ClearTextFileFromPanel( );
+        Refresh( );
+        Update( );
+    }
 }
 
 void DisplayFrame::OnCoordsSelectionModeClick(wxCommandEvent& event) {
-    if ( CheckIfImagesAreSelectedAndIssueWarning( ) )
-        cisTEMDisplayPanel->ClearSelection(false);
+    if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled ) {
+        if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->number_of_selections > 0 ) {
+            wxMessageDialog question_dialog(this, "By switching the selection mode, you will lose your current image selections.\nDo you want to continue?", "Switch Selection Modes?", wxYES_NO | wxNO_DEFAULT | wxICON_EXCLAMATION);
+            if ( question_dialog.ShowModal( ) == wxID_YES ) {
+                cisTEMDisplayPanel->ClearSelection(false);
+                cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled = false;
 
-    cisTEMDisplayPanel->ReturnCurrentPanel( )->coords_picking_mode_enabled   = true;
-    cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled    = false;
-    cisTEMDisplayPanel->ReturnCurrentPanel( )->filament_picking_mode_enabled = false;
-    SelectInvertSelection->Enable(false);
+                SelectInvertSelection->Enable(false);
+            }
+            // User doesn't want to lose selections; do nothing
+            else
+                return;
+        }
 
-    ClearTextFileFromPanel( );
-    Refresh( );
-    Update( );
+        // No selections
+        else
+            cisTEMDisplayPanel->SetActiveSelectionMode(MODE_COORDS); // new coords mode being activated
+        //cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled = false;
+
+        ClearTextFileFromPanel( );
+        Refresh( );
+        Update( );
+    }
 }
 
 void DisplayFrame::OnFilamentSelectionModeClick(wxCommandEvent& event) {
-    if ( CheckIfImagesAreSelectedAndIssueWarning( ) )
-        cisTEMDisplayPanel->ClearSelection(false);
+    // old manual way of activating the filament mode
+    // 1. Enable coordinates mode (by disabling image picking)
+    // If the variable belongs to your DisplayPanel (e.g., my_panel), use the pointer.
+    // If it belongs directly to DisplayFrame, remove "my_panel->".
+    // cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled = false;
 
-    // This is a maybe; we may be able to just keep any selected coords and swap between modes
-    // if ( CheckIfCoordsAreSelectedAndIssueWarning( ) )
-    // cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->Clear( );
+    // 2. Enable selection distances
+    // cisTEMDisplayPanel->ReturnCurrentPanel( )->show_selection_distances = true;
 
-    cisTEMDisplayPanel->ReturnCurrentPanel( )->filament_picking_mode_enabled = true;
-    cisTEMDisplayPanel->ReturnCurrentPanel( )->show_selection_distances      = true;
-    cisTEMDisplayPanel->ReturnCurrentPanel( )->coords_picking_mode_enabled   = false;
-    cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled    = false;
-    SelectInvertSelection->Enable(false);
+    // 1 & 2. Safely enable filament mode and update all tracking booleans
+    cisTEMDisplayPanel->SetActiveSelectionMode(MODE_FILAMENT);
 
-    ClearTextFileFromPanel( );
+    // to ensure that the filament mode is selected
+    SelectImageSelectionMode->Check(false);
+    SelectCoordsSelectionMode->Check(false);
+    SelectFilamentSelectionMode->Check(true);
+
+    // 3. Force the panel to redraw so the distances and new mode appear immediately
     Refresh( );
-    Update( );
+    Update( ); // Optional: forces immediate repaint
+
+    // Allow wxWidgets to continue processing the event if necessary
+    event.Skip( );
 }
 
 void DisplayFrame::OnOpenTxtClick(wxCommandEvent& event) {
@@ -159,28 +193,22 @@ void DisplayFrame::OnOpenTxtClick(wxCommandEvent& event) {
         wxFileDialog* open_dialog = new wxFileDialog(this, caption, default_dir, default_filename, wildcard, wxFD_OPEN);
         if ( open_dialog->ShowModal( ) == wxID_OK ) {
             //Start with setting up the file info
-            path          = open_dialog->GetPath( );
-            remember_path = open_dialog->GetDirectory( );
-            name_of_file  = open_dialog->GetFilename( );
-            std::ifstream image_selections_file(path.ToStdString( ));
-            // wxTextFile*   file_to_open = new wxTextFile(path);
+            path                     = open_dialog->GetPath( );
+            remember_path            = open_dialog->GetDirectory( );
+            name_of_file             = open_dialog->GetFilename( );
+            wxTextFile* file_to_open = new wxTextFile(path);
 
             // Start reading from the file
-            // file_to_open->Open( );
-            // wxString current_line;
-            std::string current_line;
-            while ( std::getline(image_selections_file, current_line) && valid_file ) {
-                std::istringstream iss(current_line);
-                valid_file = LoadImageSelections(iss);
-            }
+            file_to_open->Open( );
+            wxString current_line;
 
-            // // Continue reading until through the file
-            // size_t line_counter = 0;
-            // while ( valid_file && line_counter < file_to_open->GetLineCount( ) ) {
-            //     current_line = file_to_open->GetLine(line_counter);
-            //     valid_file   = LoadImageSelections(current_line);
-            //     line_counter++;
-            // }
+            // Continue reading until through the file
+            size_t line_counter = 0;
+            while ( valid_file && line_counter < file_to_open->GetLineCount( ) ) {
+                current_line = file_to_open->GetLine(line_counter);
+                valid_file   = LoadImageSelections(current_line);
+                line_counter++;
+            }
         }
     }
     // Otherwise, we're in coords mode
@@ -204,30 +232,23 @@ void DisplayFrame::OnOpenTxtClick(wxCommandEvent& event) {
         wxFileDialog* open_dialog = new wxFileDialog(this, caption, default_dir, default_filename, wildcard, wxFD_OPEN);
         if ( open_dialog->ShowModal( ) == wxID_OK ) {
             //Start with setting up the file info
-            path          = open_dialog->GetPath( );
-            remember_path = open_dialog->GetDirectory( );
-            name_of_file  = open_dialog->GetFilename( );
-            std::ifstream coords_txt_file(path.ToStdString( ), std::ios::app);
-            // wxTextFile*   file_to_open = new wxTextFile(path);
+            path                     = open_dialog->GetPath( );
+            remember_path            = open_dialog->GetDirectory( );
+            name_of_file             = open_dialog->GetFilename( );
+            wxTextFile* file_to_open = new wxTextFile(path);
 
             // Start reading from the file
-            // file_to_open->Open( );
-            // wxString current_line;
-            std::string current_line;
-            long        x, y, image_number;
-
-            while ( std::getline(coords_txt_file, current_line) && valid_file ) {
-                std::istringstream iss(current_line);
-                valid_file = LoadCoords(iss, x, y, image_number);
-            }
+            file_to_open->Open( );
+            wxString current_line;
+            long     x, y, image_number;
 
             // Continue reading until through the file
-            // size_t line_counter = 0;
-            // while ( valid_file && line_counter < file_to_open->GetLineCount( ) ) {
-            // current_line = file_to_open->GetLine(line_counter);
-            // valid_file   = LoadCoords(current_line, x, y, image_number);
-            // line_counter++;
-            // }
+            size_t line_counter = 0;
+            while ( valid_file && line_counter < file_to_open->GetLineCount( ) ) {
+                current_line = file_to_open->GetLine(line_counter);
+                valid_file   = LoadCoords(current_line, x, y, image_number);
+                line_counter++;
+            }
         }
     }
     if ( valid_file ) {
@@ -241,6 +262,75 @@ void DisplayFrame::OnOpenTxtClick(wxCommandEvent& event) {
     Update( );
 }
 
+// void DisplayFrame::OnSaveTxtClick(wxCommandEvent& event) {
+//     if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->have_txt_filename && cisTEMDisplayPanel->ReturnCurrentPanel( )->txt_is_saved ) {
+//         cisTEMDisplayPanel->SetTabNameSaved( ); // Just make sure it's saved and tab name is up to date
+//         return;
+//     }
+//     // Have unsaved file; update the file with current selections
+//     else if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->have_txt_filename && ! cisTEMDisplayPanel->ReturnCurrentPanel( )->txt_is_saved ) {
+//         wxTextFile file_to_update(cisTEMDisplayPanel->ReturnCurrentPanel( )->current_file_path); // Get a wxTextFile from extant file
+//         if ( ! file_to_update.Exists( ) ) {
+//             wxMessageDialog nonexistent_dialog(this, "The text file you're attempting to overwrite does not exist.", "Error: File to save does not exist.", wxOK | wxOK_DEFAULT | wxICON_EXCLAMATION);
+//             return;
+//         }
+//         else {
+//             // Just open, clear, and re-fill
+//             file_to_update.Open( );
+//             file_to_update.Clear( );
+
+//             if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled ) {
+//                 for ( long i = 0; i <= cisTEMDisplayPanel->ReturnCurrentPanel( )->ReturnNumberofImages( ); i++ ) {
+//                     if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->image_is_selected[i] )
+//                         file_to_update.AddLine(wxString::Format("%li", i));
+//                 }
+//             }
+
+//             // coords mode
+//             else {
+
+//                 // check first that we have even number of coordinates in each image
+//                 // 1. Count coordinates per image
+//                 std::map<long, int> coord_count_per_image;
+//                 long                num_coords = cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->number_of_coords;
+
+//                 for ( long i = 0; i < num_coords; ++i ) {
+//                     long img = cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number;
+//                     coord_count_per_image[img]++;
+//                 }
+
+//                 // 2. Check for images with odd counts
+//                 std::vector<long> odd_images;
+//                 for ( const auto& [img, count] : coord_count_per_image ) {
+//                     if ( count % 2 != 0 ) {
+//                         odd_images.push_back(img);
+//                     }
+//                 }
+
+//                 // 3. If any found, warn user and abort
+//                 if ( ! odd_images.empty( ) ) {
+//                     wxString msg = "Cannot save: the following image(s) have an odd number of coordinates:\n";
+//                     for ( long img : odd_images ) {
+//                         msg += wxString::Format(" - Image %ld has %d coordinate(s)\n",
+//                                                 img, coord_count_per_image[img]);
+//                     }
+//                     msg += "\nPlease adjust your selections to ensure each image has an even number of points.";
+//                     wxMessageBox(msg, "Odd Coordinate Count", wxOK | wxICON_WARNING);
+//                     return; // cancel save
+//                 }
+//                 // if everything looks good move forward
+
+//                 for ( int i = 0; i < cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->number_of_coords; i++ ) {
+//                     file_to_update.AddLine(wxString::Format("%li %li %li", cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].x_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].y_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number));
+//                 }
+//             }
+//             file_to_update.Write( );
+//             file_to_update.Close( );
+//         }
+//         cisTEMDisplayPanel->SetTabNameSaved( );
+//     }
+// }
+
 void DisplayFrame::OnSaveTxtClick(wxCommandEvent& event) {
     if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->have_txt_filename && cisTEMDisplayPanel->ReturnCurrentPanel( )->txt_is_saved ) {
         cisTEMDisplayPanel->SetTabNameSaved( ); // Just make sure it's saved and tab name is up to date
@@ -248,44 +338,183 @@ void DisplayFrame::OnSaveTxtClick(wxCommandEvent& event) {
     }
     // Have unsaved file; update the file with current selections
     else if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->have_txt_filename && ! cisTEMDisplayPanel->ReturnCurrentPanel( )->txt_is_saved ) {
-        // FIXME: wxTextFile kinda sucks compared with C++ STL; switch to ofstream
-        // Wipe out the original contents of the text file since coords being saved are in memory.
-        std::ofstream file_to_update(cisTEMDisplayPanel->ReturnCurrentPanel( )->current_file_path, std::ofstream::trunc | std::ofstream::out);
-        file_to_update.close( );
-
-        // Reopen in append mode
-        file_to_update.open(cisTEMDisplayPanel->ReturnCurrentPanel( )->current_file_path, std::ios::app);
-        // wxTextFile file_to_update(cisTEMDisplayPanel->ReturnCurrentPanel( )->current_file_path); // Get a wxTextFile from extant file
-        if ( ! file_to_update.is_open( ) ) {
+        wxTextFile file_to_update(cisTEMDisplayPanel->ReturnCurrentPanel( )->current_file_path); // Get a wxTextFile from extant file
+        if ( ! file_to_update.Exists( ) ) {
             wxMessageDialog nonexistent_dialog(this, "The text file you're attempting to overwrite does not exist.", "Error: File to save does not exist.", wxOK | wxOK_DEFAULT | wxICON_EXCLAMATION);
             return;
         }
         else {
-            // // Just open, clear, and re-fill
-            // file_to_update.Open( );
-            // file_to_update.Clear( );
+            // Just open, clear, and re-fill
+            file_to_update.Open( );
+            file_to_update.Clear( );
 
             if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled ) {
                 for ( long i = 0; i <= cisTEMDisplayPanel->ReturnCurrentPanel( )->ReturnNumberofImages( ); i++ ) {
                     if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->image_is_selected[i] )
-                        // file_to_update.AddLine(wxString::Format("%li", i));
-                        file_to_update << std::to_string(i) << std::endl;
+                        file_to_update.AddLine(wxString::Format("%li", i));
                 }
             }
 
             // coords mode
             else {
+
+                // check first that we have even number of coordinates in each image
+                // 1. Count coordinates per image
+                std::map<long, int> coord_count_per_image;
+                long                num_coords = cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->number_of_coords;
+
+                for ( long i = 0; i < num_coords; ++i ) {
+                    long img = cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number;
+                    coord_count_per_image[img]++;
+                }
+
+                // 2. Check for images with odd counts
+                std::vector<long> odd_images;
+                for ( const auto& [img, count] : coord_count_per_image ) {
+                    if ( count % 2 != 0 ) {
+                        odd_images.push_back(img);
+                    }
+                }
+
+                // 3. If any found, warn user and abort
+                if ( ! odd_images.empty( ) ) {
+                    wxString msg = "Cannot save: the following image(s) have an odd number of coordinates:\n";
+                    for ( long img : odd_images ) {
+                        msg += wxString::Format(" - Image %ld has %d coordinate(s)\n",
+                                                img, coord_count_per_image[img]);
+                    }
+                    msg += "\nPlease adjust your selections to ensure each image has an even number of points.";
+                    wxMessageBox(msg, "Odd Coordinate Count", wxOK | wxICON_WARNING);
+                    return; // cancel save
+                }
+                // if everything looks good move forward
+
                 for ( int i = 0; i < cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->number_of_coords; i++ ) {
-                    file_to_update << wxString::Format("%li %li %li", cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].x_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].y_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number).ToStdString( ) << std::endl;
-                    // file_to_update.AddLine(wxString::Format("%li %li %li", cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].x_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].y_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number));
+                    file_to_update.AddLine(wxString::Format("%li %li %li", cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].x_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].y_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number));
                 }
             }
-            file_to_update.close( );
-            // file_to_update.Close( );
+            file_to_update.Write( );
+            file_to_update.Close( );
         }
         cisTEMDisplayPanel->SetTabNameSaved( );
     }
 }
+
+// void DisplayFrame::OnSaveTxtAsClick(wxCommandEvent& event) {
+//     wxString   caption;
+//     wxString   wildcard;
+//     wxString   default_dir;
+//     wxString   default_filename;
+//     wxString   path;
+//     wxFileName mrc_name;
+//     wxFileName temp_filename;
+//     int        temp_int;
+
+//     if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled ) {
+//         caption          = wxT("Save image selections as text file");
+//         wildcard         = wxT("TXT files (*.txt)|*.txt");
+//         default_dir      = remember_path;
+//         mrc_name         = cisTEMDisplayPanel->ReturnCurrentPanel( )->filename;
+//         default_filename = "selections_" + mrc_name.GetName( ) + ".txt";
+//         temp_filename    = default_filename;
+//         temp_int         = 1;
+
+//         // If the default filename already exists, apppend an integer to default name
+//         if ( temp_filename.Exists( ) ) {
+//             while ( temp_filename.Exists( ) ) {
+//                 temp_filename = default_filename;
+//                 temp_filename = wxString::Format("%i_" + default_filename, temp_int);
+//                 temp_int++;
+//             }
+//         }
+//         default_filename = temp_filename.GetFullName( );
+
+//         wxFileDialog* save_dialog = new wxFileDialog(this, caption, default_dir, default_filename, wildcard, wxFD_SAVE);
+//         if ( save_dialog->ShowModal( ) == wxID_OK ) {
+//             default_filename                = save_dialog->GetFilename( );
+//             path                            = save_dialog->GetPath( );
+//             remember_path                   = save_dialog->GetDirectory( );
+//             wxTextFile* new_selections_file = new wxTextFile(path);
+//             for ( long i = 0; i <= cisTEMDisplayPanel->ReturnCurrentPanel( )->ReturnNumberofImages( ); i++ ) {
+//                 if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->image_is_selected[i] )
+//                     new_selections_file->AddLine(wxString::Format("%li", i));
+//             }
+//             new_selections_file->Write( );
+//             new_selections_file->Close( );
+//         }
+//     }
+
+//     // coords mode
+//     else {
+//         // check first that we have even number of coordinates in each image
+//         // 1. Count coordinates per image
+//         std::map<long, int> coord_count_per_image;
+//         long                num_coords = cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->number_of_coords;
+
+//         for ( long i = 0; i < num_coords; ++i ) {
+//             long img = cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number;
+//             coord_count_per_image[img]++;
+//         }
+
+//         // 2. Check for images with odd counts
+//         std::vector<long> odd_images;
+//         for ( const auto& [img, count] : coord_count_per_image ) {
+//             if ( count % 2 != 0 ) {
+//                 odd_images.push_back(img);
+//             }
+//         }
+
+//         // 3. If any found, warn user and abort
+//         if ( ! odd_images.empty( ) ) {
+//             wxString msg = "Cannot save: the following image(s) have an odd number of coordinates:\n";
+//             for ( long img : odd_images ) {
+//                 msg += wxString::Format(" - Image %ld has %d coordinate(s)\n",
+//                                         img, coord_count_per_image[img]);
+//             }
+//             msg += "\nPlease adjust your selections to ensure each image has an even number of points.";
+//             wxMessageBox(msg, "Odd Coordinate Count", wxOK | wxICON_WARNING);
+//             return; // cancel save
+//         }
+//         // if everything looks good move forward
+//         caption          = wxT("Save coordinates as text file");
+//         wildcard         = wxT("TXT files (*.txt)|*.txt");
+//         default_dir      = remember_path;
+//         mrc_name         = cisTEMDisplayPanel->ReturnCurrentPanel( )->filename;
+//         default_filename = "coords_" + mrc_name.GetName( ) + ".txt";
+//         temp_filename    = default_filename;
+//         int temp_int     = 1;
+
+//         // If the filename already exists, apppend an integer to default name
+//         if ( temp_filename.Exists( ) ) {
+//             while ( temp_filename.Exists( ) ) {
+//                 temp_filename = default_filename;
+//                 temp_filename = wxString::Format("%i_" + default_filename, temp_int);
+//                 temp_int++;
+//             }
+//         }
+//         default_filename = temp_filename.GetFullName( );
+
+//         // Now set up the file with the new name and then open the dialog for saving
+//         wxFileDialog* save_dialog = new wxFileDialog(NULL, caption, default_dir, default_filename, wildcard, wxFD_SAVE);
+//         if ( save_dialog->ShowModal( ) == wxID_OK ) {
+//             default_filename            = save_dialog->GetFilename( );
+//             path                        = save_dialog->GetPath( );
+//             remember_path               = save_dialog->GetDirectory( );
+//             wxTextFile* new_coords_file = new wxTextFile(path);
+//             // the coordinates are adjusted before so will have to readjust the values later so that the saved values are based on a bottom left coordinates starting in an image
+//             for ( int i = 0; i < cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->number_of_coords; i++ ) {
+//                 new_coords_file->AddLine(wxString::Format("%li %li %li", cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].x_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->ReturnImageYSize( ) - cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].y_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number));
+//             }
+//             new_coords_file->Write( );
+//             new_coords_file->Close( );
+//         }
+//     }
+//     // Track the currently opened file for saving in case user makes further selections
+//     cisTEMDisplayPanel->ReturnCurrentPanel( )->short_txt_filename = default_filename;
+//     cisTEMDisplayPanel->ReturnCurrentPanel( )->current_file_path  = path;
+//     cisTEMDisplayPanel->ReturnCurrentPanel( )->have_txt_filename  = true;
+//     cisTEMDisplayPanel->SetTabNameSaved( );
+// }
 
 void DisplayFrame::OnSaveTxtAsClick(wxCommandEvent& event) {
     wxString   caption;
@@ -318,24 +547,51 @@ void DisplayFrame::OnSaveTxtAsClick(wxCommandEvent& event) {
 
         wxFileDialog* save_dialog = new wxFileDialog(this, caption, default_dir, default_filename, wildcard, wxFD_SAVE);
         if ( save_dialog->ShowModal( ) == wxID_OK ) {
-            default_filename = save_dialog->GetFilename( );
-            path             = save_dialog->GetPath( );
-            remember_path    = save_dialog->GetDirectory( );
-            std::ofstream new_selections_file(path.ToStdString( ), std::ios::app);
-            // wxTextFile*   new_selections_file = new wxTextFile(path);
+            default_filename                = save_dialog->GetFilename( );
+            path                            = save_dialog->GetPath( );
+            remember_path                   = save_dialog->GetDirectory( );
+            wxTextFile* new_selections_file = new wxTextFile(path);
             for ( long i = 0; i <= cisTEMDisplayPanel->ReturnCurrentPanel( )->ReturnNumberofImages( ); i++ ) {
                 if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->image_is_selected[i] )
-                    new_selections_file << std::to_string(i);
-                // new_selections_file->AddLine(wxString::Format("%li", i));
+                    new_selections_file->AddLine(wxString::Format("%li", i));
             }
-            new_selections_file.close( );
-            // new_selections_file->Write( );
-            // new_selections_file->Close( );
+            new_selections_file->Write( );
+            new_selections_file->Close( );
         }
     }
 
     // coords mode
     else {
+        // check first that we have even number of coordinates in each image
+        // 1. Count coordinates per image
+        std::map<long, int> coord_count_per_image;
+        long                num_coords = cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->number_of_coords;
+
+        for ( long i = 0; i < num_coords; ++i ) {
+            long img = cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number;
+            coord_count_per_image[img]++;
+        }
+
+        // 2. Check for images with odd counts
+        std::vector<long> odd_images;
+        for ( const auto& [img, count] : coord_count_per_image ) {
+            if ( count % 2 != 0 ) {
+                odd_images.push_back(img);
+            }
+        }
+
+        // 3. If any found, warn user and abort
+        if ( ! odd_images.empty( ) ) {
+            wxString msg = "Cannot save: the following image(s) have an odd number of coordinates:\n";
+            for ( long img : odd_images ) {
+                msg += wxString::Format(" - Image %ld has %d coordinate(s)\n",
+                                        img, coord_count_per_image[img]);
+            }
+            msg += "\nPlease adjust your selections to ensure each image has an even number of points.";
+            wxMessageBox(msg, "Odd Coordinate Count", wxOK | wxICON_WARNING);
+            return; // cancel save
+        }
+        // if everything looks good move forward
         caption          = wxT("Save coordinates as text file");
         wildcard         = wxT("TXT files (*.txt)|*.txt");
         default_dir      = remember_path;
@@ -357,18 +613,16 @@ void DisplayFrame::OnSaveTxtAsClick(wxCommandEvent& event) {
         // Now set up the file with the new name and then open the dialog for saving
         wxFileDialog* save_dialog = new wxFileDialog(NULL, caption, default_dir, default_filename, wildcard, wxFD_SAVE);
         if ( save_dialog->ShowModal( ) == wxID_OK ) {
-            default_filename = save_dialog->GetFilename( );
-            path             = save_dialog->GetPath( );
-            remember_path    = save_dialog->GetDirectory( );
-            std::ofstream new_coords_file(path.ToStdString( ), std::ios::app);
-            // wxTextFile*   new_coords_file = new wxTextFile(path);
+            default_filename            = save_dialog->GetFilename( );
+            path                        = save_dialog->GetPath( );
+            remember_path               = save_dialog->GetDirectory( );
+            wxTextFile* new_coords_file = new wxTextFile(path);
+            // the coordinates are adjusted before so will have to readjust the values later so that the saved values are based on a bottom left coordinates starting in an image
             for ( int i = 0; i < cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->number_of_coords; i++ ) {
-                new_coords_file << wxString::Format("%li %li %li", cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].x_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].y_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number).ToStdString( ) << std::endl;
-                // new_coords_file->AddLine(wxString::Format("%li %li %li", cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].x_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].y_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number));
+                new_coords_file->AddLine(wxString::Format("%li %li %li", cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].x_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->ReturnImageYSize( ) - cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].y_pos, cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->coords[i].image_number));
             }
-            // new_coords_file->Write( );
-            // new_coords_file->Close( );
-            new_coords_file.close( );
+            new_coords_file->Write( );
+            new_coords_file->Close( );
         }
     }
     // Track the currently opened file for saving in case user makes further selections
@@ -481,7 +735,6 @@ void DisplayFrame::DisableAllToolbarButtons( ) {
     // Select menu
     SelectImageSelectionMode->Enable(false);
     SelectCoordsSelectionMode->Enable(false);
-    SelectFilamentSelectionMode->Enable(false);
     SelectOpenTxt->Enable(false);
     SelectSaveTxt->Enable(false);
     SelectSaveTxtAs->Enable(false);
@@ -505,7 +758,7 @@ void DisplayFrame::EnableAllToolbarButtons( ) {
     // Select menu
     SelectImageSelectionMode->Enable(true);
     SelectCoordsSelectionMode->Enable(true);
-    SelectFilamentSelectionMode->Enable(true);
+    SelectFilamentSelectionMode->Enable(true); //activating the filament selection mode option
     SelectOpenTxt->Enable(true);
     SelectSaveTxt->Enable(true);
     SelectSaveTxtAs->Enable(true);
@@ -536,18 +789,39 @@ void DisplayFrame::OnUpdateUI(wxUpdateUIEvent& event) {
             SelectSaveTxt->Enable(false);
         }
 
-        // Keep picking mode radio buttons visually current
+        // // Keep picking mode radio buttons visually current
+        // if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled ) {
+        //     SelectImageSelectionMode->Check(true);
+        //     SelectInvertSelection->Enable(true);
+        // }
+        // else {
+        //     SelectCoordsSelectionMode->Check(true);
+        //     SelectInvertSelection->Enable(false);
+        // }
+
+        // Accounting for the extra filament mode
         if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled ) {
+
             SelectImageSelectionMode->Check(true);
+            SelectCoordsSelectionMode->Check(false);
+            SelectFilamentSelectionMode->Check(false);
+
             SelectInvertSelection->Enable(true);
         }
-        else if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->coords_picking_mode_enabled ) {
+        else if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->coords_mode_enabled ) {
+
+            SelectImageSelectionMode->Check(false);
             SelectCoordsSelectionMode->Check(true);
+            SelectFilamentSelectionMode->Check(false);
+
             SelectInvertSelection->Enable(false);
         }
         else if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->filament_picking_mode_enabled ) {
+
+            SelectImageSelectionMode->Check(false);
+            SelectCoordsSelectionMode->Check(false);
             SelectFilamentSelectionMode->Check(true);
-            OptionsShowSelectionDistances->Enable(false);
+
             SelectInvertSelection->Enable(false);
         }
 
@@ -567,7 +841,7 @@ void DisplayFrame::OnUpdateUI(wxUpdateUIEvent& event) {
                 OptionsSingleImageMode->Check(true);
             SelectImageSelectionMode->Enable(false);
         }
-        else {
+        else if ( ! cisTEMDisplayPanel->ReturnCurrentPanel( )->single_image ) {
             if ( OptionsSingleImageMode->IsChecked( ) )
                 OptionsSingleImageMode->Check(false);
             SelectImageSelectionMode->Enable(true);
@@ -579,19 +853,19 @@ void DisplayFrame::OnUpdateUI(wxUpdateUIEvent& event) {
                 OptionsShowResolution->Check(true);
             }
         }
-        else {
+        else if ( ! cisTEMDisplayPanel->ReturnCurrentPanel( )->resolution_instead_of_radius ) {
             if ( OptionsShowResolution->IsChecked( ) ) {
                 OptionsShowResolution->Check(false);
             }
         }
 
         // Repeat again for selection distance option
-        if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->show_selection_distances ) {
+        if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->show_selection_distances || cisTEMDisplayPanel->ReturnCurrentPanel( )->filament_picking_mode_enabled ) {
             if ( ! OptionsShowSelectionDistances->IsChecked( ) ) {
                 OptionsShowSelectionDistances->Check(true);
             }
         }
-        else {
+        else if ( ! cisTEMDisplayPanel->ReturnCurrentPanel( )->show_selection_distances ) {
             if ( OptionsShowSelectionDistances->IsChecked( ) ) {
                 OptionsShowSelectionDistances->Check(false);
             }
@@ -602,15 +876,24 @@ void DisplayFrame::OnUpdateUI(wxUpdateUIEvent& event) {
         DisableAllToolbarButtons( );
 }
 
-bool DisplayFrame::LoadCoords(std::istringstream& current_line, long& x, long& y, long& image_number) {
-    // Extract values, checking that the text file is formatted correctly
-    if ( ! (current_line >> x >> y >> image_number) ) {
+bool DisplayFrame::LoadCoords(wxString current_line, long& x, long& y, long& image_number) {
+    // Parse the string for x, y, and the image number
+    int index_of_whitespace      = current_line.find(' ');
+    int prev_whitespace_position = 0;
+    if ( index_of_whitespace == wxNOT_FOUND ) {
         wxMessageDialog wrong_file_format(this, "Cannot open Image Selection text file in Coordinate Selection mode.", "Incorrect File Format", wxOK | wxOK_DEFAULT | wxICON_EXCLAMATION);
         wrong_file_format.ShowModal( );
         return false;
     }
+    current_line.SubString(prev_whitespace_position, index_of_whitespace - 1).ToLong(&x);
+    prev_whitespace_position = index_of_whitespace;
+    index_of_whitespace      = current_line.find(' ', index_of_whitespace + 1);
+    current_line.SubString(prev_whitespace_position + 1, index_of_whitespace - 1).ToLong(&y);
+    prev_whitespace_position = index_of_whitespace;
+    index_of_whitespace      = current_line.find('\n', index_of_whitespace + 1);
+    current_line.SubString(prev_whitespace_position + 1, index_of_whitespace - 1).ToLong(&image_number);
 
-    // Check that the x and y coordinates are box size, and num images within range.
+    // First, check that all coordinates and image numbers are valid for the open image
     if ( x < cisTEMDisplayPanel->ReturnCurrentPanel( )->ReturnImageXSize( ) && y < cisTEMDisplayPanel->ReturnCurrentPanel( )->ReturnImageYSize( ) && image_number <= cisTEMDisplayPanel->ReturnCurrentPanel( )->ReturnNumberofImages( ) ) {
         cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->ToggleCoord(image_number, x, y);
         return true;
@@ -623,14 +906,18 @@ bool DisplayFrame::LoadCoords(std::istringstream& current_line, long& x, long& y
     }
 }
 
-bool DisplayFrame::LoadImageSelections(std::istringstream& current_line) {
+bool DisplayFrame::LoadImageSelections(wxString current_line) {
     // Quick check of file format
-    long image_number = 0;
-    if ( ! current_line >> image_number ) {
+    int index_of_whitespace = current_line.find(' ');
+    if ( index_of_whitespace != wxNOT_FOUND ) {
         wxMessageDialog wrong_file_format(this, "Cannot open Coordinate Selection text file in Image Selection mode.", "Incorrect File Format", wxOK | wxOK_DEFAULT | wxICON_EXCLAMATION);
         wrong_file_format.ShowModal( );
         return false;
     }
+
+    // Get the value that's selected
+    long image_number;
+    current_line.ToLong(&image_number);
 
     if ( image_number <= cisTEMDisplayPanel->ReturnCurrentPanel( )->ReturnNumberofImages( ) ) {
         cisTEMDisplayPanel->ReturnCurrentPanel( )->SetImageSelected(image_number, false);
@@ -649,39 +936,4 @@ void DisplayFrame::ClearTextFileFromPanel( ) {
     cisTEMDisplayPanel->ReturnCurrentPanel( )->short_txt_filename = wxEmptyString;
     cisTEMDisplayPanel->ReturnCurrentPanel( )->current_file_path  = wxEmptyString;
     cisTEMDisplayPanel->SetTabNameSaved( );
-}
-
-/**
- * @brief Helper function which will issue a warning when changing modes if selections have already been made.
- * Depending on user response, the caller will then either clear or keep selections.
- * 
- * @return true User wants to clear selections.
- * @return false User wants to keep selections or no selections currently exist.
- */
-bool DisplayFrame::CheckIfImagesAreSelectedAndIssueWarning( ) {
-    if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled ) {
-        if ( cisTEMDisplayPanel->ReturnCurrentPanel( )->number_of_selections > 0 ) {
-            wxMessageDialog question_dialog(this, "By switching the selection mode, you will lose your current image selections.\nDo you want to continue?", "Switch Selection Modes?", wxYES_NO | wxNO_DEFAULT | wxICON_EXCLAMATION);
-            if ( question_dialog.ShowModal( ) == wxID_YES ) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-/**
- * @brief Helper function which will issue a warning when changing modes if selections have already been made.
- * Depending on user response, the caller will then either clear or keep selections.
- * 
- * @return true User wants to clear selections.
- * @return false User wants to keep selections or no selections currently exist.
- */
-bool DisplayFrame::CheckIfCoordsAreSelectedAndIssueWarning( ) {
-    if ( ! cisTEMDisplayPanel->ReturnCurrentPanel( )->image_picking_mode_enabled && cisTEMDisplayPanel->ReturnCurrentPanel( )->coord_tracker->number_of_coords > 0 ) {
-        wxMessageDialog question_dialog(this, "By switching the selection mode, you will lose your current coordinates selections if they are unsaved.\nDo you want to continue?", "Swtich Selection Modes?", wxYES_NO | wxNO_DEFAULT | wxICON_EXCLAMATION);
-        if ( question_dialog.ShowModal( ) == wxID_YES )
-            return true;
-    }
-    return false;
 }

@@ -118,7 +118,7 @@ class DisplayFrameParent : public wxFrame {
 
     virtual void OnCoordsSelectionModeClick(wxCommandEvent& event) { event.Skip( ); }
 
-    //virtual void OnFilamentSelectionModeClick(wxCommandEvent& event) { event.Skip( ); }
+    virtual void OnFilamentSelectionModeClick(wxCommandEvent& event) { event.Skip( ); }
 
     virtual void OnInvertSelectionClick(wxCommandEvent& event) { event.Skip( ); }
 

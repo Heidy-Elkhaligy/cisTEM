@@ -51,8 +51,8 @@ class DisplayFrame : public DisplayFrameParent {
   private:
     bool     is_fullscreen;
     wxString remember_path;
-    bool     LoadCoords(std::istringstream& current_line, long& x, long& y, long& image_number);
-    bool     LoadImageSelections(std::istringstream& current_line);
+    bool     LoadCoords(wxString current_line, long& x, long& y, long& image_number); //changed to wxString instead of std::isstringstream
+    bool     LoadImageSelections(wxString current_line); //changed to wxString instead of std::isstringstream
     bool     CheckIfImagesAreSelectedAndIssueWarning( );
     bool     CheckIfCoordsAreSelectedAndIssueWarning( );
     void     ClearTextFileFromPanel( );
