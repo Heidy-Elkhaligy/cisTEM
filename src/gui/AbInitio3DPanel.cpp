@@ -1102,10 +1102,11 @@ void AbInitioManager::BeginRefinementCycle( ) {
     current_reference_filenames.Add(blank_string, number_of_classes);
 
     // empty scratch
-    if ( wxDir::Exists(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/") == true )
-        wxFileName::Rmdir(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup", wxPATH_RMDIR_RECURSIVE);
-    if ( wxDir::Exists(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/") == false )
-        wxFileName::Mkdir(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup");
+    // I commented those lines so that the azimuthal average of RASTR is not deleted after it is being copied over.
+    // if ( wxDir::Exists(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/") == true )
+    //     wxFileName::Rmdir(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup", wxPATH_RMDIR_RECURSIVE);
+    // if ( wxDir::Exists(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/") == false )
+    //     wxFileName::Mkdir(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup");
 
     my_parent->InputParamsPanel->Show(false);
     my_parent->StartPanel->Show(false);
