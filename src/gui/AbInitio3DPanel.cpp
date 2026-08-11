@@ -1662,23 +1662,18 @@ void AbInitioManager::SetupRefinementJob( ) {
 
     for ( class_counter = 0; class_counter < input_refinement->number_of_classes; class_counter++ ) {
 
-        wxString output_reconstruction_filtered;
-        int      output_number = (number_of_rounds_to_run * number_of_starts_run) + number_of_rounds_run;
-
-        if ( start_with_reconstruction == true )
-            output_reconstruction_filtered = main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/startup3d_initial_RASTR_azavg.mrc";
-        else
-            output_reconstruction_filtered = main_frame->current_project.scratch_directory.GetFullPath( ) + wxString::Format("/Startup/startup3d_%i_%i.mrc", output_number, class_counter);
-
-        current_reference_filenames.Item(class_counter) = output_reconstruction_filtered;
-
         for ( counter = 0; counter < number_of_refinement_jobs; counter++ ) {
 
             FirstLastParticleForJob(first_particle, last_particle, number_of_particles, counter + 1, number_of_refinement_jobs);
 
-            wxString input_particle_images           = active_stack_filename; //active_refinement_package->stack_filename;
-            wxString input_parameter_file            = written_parameter_files.Item(class_counter);
-            wxString input_reconstruction            = current_reference_filenames.Item(class_counter);
+            wxString input_particle_images = active_stack_filename; //active_refinement_package->stack_filename;
+            wxString input_parameter_file  = written_parameter_files.Item(class_counter);
+            if ( counter = 0 ) { // I need to find another better way to set this RASTR azimuthal average
+                wxString input_reconstruction = main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/startup3d_initial_RASTR_azavg.mrc";
+            }
+            else {
+                wxString input_reconstruction = current_reference_filenames.Item(class_counter);
+            }
             wxString input_reconstruction_statistics = written_res_files.Item(class_counter);
             bool     use_statistics                  = true;
 
