@@ -95,6 +95,7 @@ float FrealignObjectiveFunction(void* scoring_parameters, float* array_of_values
 
     //****************
     // The minimizer sometimes tries weird values
+    // This has a local limited shift
     if ( isnan(comparison_object->particle->alignment_parameters.ReturnShiftX( )) || fabsf(comparison_object->particle->alignment_parameters.ReturnShiftX( ) - comparison_object->initial_x_shift) > comparison_object->x_shift_limit )
         return 1;
     if ( isnan(comparison_object->particle->alignment_parameters.ReturnShiftY( )) || fabsf(comparison_object->particle->alignment_parameters.ReturnShiftY( )) > comparison_object->y_shift_limit ) //- comparison_object->initial_y_shift
