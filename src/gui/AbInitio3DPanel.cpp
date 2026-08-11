@@ -1669,7 +1669,7 @@ void AbInitioManager::SetupRefinementJob( ) {
             wxString input_particle_images = active_stack_filename; //active_refinement_package->stack_filename;
             wxString input_parameter_file  = written_parameter_files.Item(class_counter);
             wxString input_reconstruction;
-            if ( counter == 0 ) { // I need to find another better way to set this RASTR azimuthal average
+            if ( class_counter == 0 ) { // I need to find another better way to set this RASTR azimuthal average
                 input_reconstruction = main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/startup3d_initial_RASTR_azavg.mrc";
             }
             else {
