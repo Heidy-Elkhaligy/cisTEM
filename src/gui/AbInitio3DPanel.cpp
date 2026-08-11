@@ -1661,6 +1661,9 @@ void AbInitioManager::SetupRefinementJob( ) {
 
     for ( class_counter = 0; class_counter < input_refinement->number_of_classes; class_counter++ ) {
 
+        wxString output_reconstruction_filtered;
+        int      output_number = (number_of_rounds_to_run * number_of_starts_run) + number_of_rounds_run;
+
         if ( start_with_reconstruction == true )
             output_reconstruction_filtered = main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/startup3d_initial_RASTR_azavg.mrc";
         else
