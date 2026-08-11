@@ -495,7 +495,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     }
 
     diameters_file << std::fixed << std::setprecision(2); // Optional: set float precision
-    diameters_file << "image_index, diameter\n";
+    diameters_file << "image_index, diameter(pixel), diameter(A)\n";
 
     std::ofstream peak_file(output_peaks_filename.ToStdString( )); // Open file once
 
@@ -1194,7 +1194,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     // Check if the all diameters file is open
     if ( diameters_file.is_open( ) ) {
         for ( size_t i = 0; i < all_diameters.size( ); ++i ) {
-            diameters_file << all_diameters[i] << '\n';
+            diameters_file << i + 1 << ", " << all_diameters[i] << ", " << all_diameters[i] * pixel_size << '\n';
         }
         diameters_file.close( );
     }
