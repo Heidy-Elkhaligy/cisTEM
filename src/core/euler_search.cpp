@@ -182,8 +182,8 @@ void EulerSearch::CalculateGridSearchPositions(bool random_start_angle) {
 
     /////////////////////////////////////////////////////////////////////
     ////////////////// Added Tube Constraints /////////////////////////
-    float tube_theta_start = 80.0;
-    float tube_theta_max   = 100.0;
+    float tube_theta_start = 30.0;
+    float tube_theta_max   = 70.0;
     theta_start_local      = tube_theta_start;
     theta_max_local        = tube_theta_max;
     //angular_step_size      = angular_step_size; // is divided again by 2 here to ensure we have small angular steps even at low resolution resampled images to get as many orientations as possible in all constrained Theta and possible Phi
