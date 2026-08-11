@@ -1661,6 +1661,13 @@ void AbInitioManager::SetupRefinementJob( ) {
 
     for ( class_counter = 0; class_counter < input_refinement->number_of_classes; class_counter++ ) {
 
+        if ( start_with_reconstruction == true )
+            output_reconstruction_filtered = main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/startup3d_initial_RASTR_azavg.mrc";
+        else
+            output_reconstruction_filtered = main_frame->current_project.scratch_directory.GetFullPath( ) + wxString::Format("/Startup/startup3d_%i_%i.mrc", output_number, class_counter);
+
+        current_reference_filenames.Item(class_counter) = output_reconstruction_filtered;
+
         for ( counter = 0; counter < number_of_refinement_jobs; counter++ ) {
 
             FirstLastParticleForJob(first_particle, last_particle, number_of_particles, counter + 1, number_of_refinement_jobs);
