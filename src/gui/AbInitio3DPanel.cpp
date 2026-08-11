@@ -1003,8 +1003,8 @@ void AbInitioManager::BeginRefinementCycle( ) {
     }
 
     // Maybe later this would be user defined?
-    float theta_start_local = 80.0f;
-    float theta_max_local   = 100.0f;
+    float theta_start_local = 30.0f;
+    float theta_max_local   = 50.0f; // only allow 10 degrees above or below 40
 
     // to choose random psi either 90 or 270
     std::mt19937                    gen(std::random_device{ }( )); // seed inline

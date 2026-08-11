@@ -1455,7 +1455,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     DEBUG_ABORT;
                 }
             }
-
+            // TODO: CHECK IF I NEED TO INVERT CONTRAST HERE AT THIS STEP
 #pragma omp critical
             projection_volume_image.WriteSlice(&my_output_sum_image_filename, bin_index + 1);
             projection_volume_image.Deallocate( );
