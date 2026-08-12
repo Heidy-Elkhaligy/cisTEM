@@ -37,14 +37,118 @@ typedef struct ctf_parameters {
 std::vector<float> sum_image_columns(Image* current_image);
 float              max_abs_column_sum(Image* current_image);
 void               save_all_columns_sum_to_file(const std::vector<std::vector<float>>& all_columns_sum, const std::string& filename);
-static void        local_maxima_1d(
-               const std::vector<float>& x,
-               std::vector<int>&         midpoints,
-               std::vector<int>&         left_edges,
-               std::vector<int>&         right_edges,
-               float                     min_depth_abs = 0.0f, // absolute depth threshold (disabled if <= 0)
-               float                     min_depth_rel = 0.0f, // relative depth (0..1) of local range, used if >0
-               int                       min_distance  = 10);
+
+// Robust plateau-aware local maxima finder with depth filtering (no prominence)
+static void local_maxima_1d(
+        const std::vector<float>& x,
+        std::vector<int>&         midpoints,
+        std::vector<int>&         left_edges,
+        std::vector<int>&         right_edges,
+        float                     min_depth_abs = 0.0f, // absolute depth threshold (disabled if <= 0)
+        float                     min_depth_rel = 0.0f, // relative depth (0..1) of local range, used if >0
+        int                       min_distance  = 10) // minimal horizontal separation
+{
+    midpoints.clear( );
+    left_edges.clear( );
+    right_edges.clear( );
+
+    const int n = (int)x.size( );
+    if ( n < 3 )
+        return;
+
+    // global_range used only to scale tiny eps; not for depth decision
+    auto [min_it, max_it] = std::minmax_element(x.begin( ), x.end( ));
+    float global_range    = *max_it - *min_it;
+    if ( global_range <= 0.0f )
+        return;
+
+    // window for local statistics (use something related to min_distance)
+    int w = std::max(5, min_distance / 2);
+
+    // small epsilon scaled to signal magnitude to detect plateaus robustly
+    const float EPS = 1e-6f * std::max(1.0f, std::abs(*max_it));
+
+    // Store depths for non-maximum suppression comparison
+    std::vector<float> peak_depths;
+    peak_depths.reserve(n / 8);
+
+    int i = 1;
+    while ( i < n - 1 ) {
+        // detect rising edge into plateau/peak
+        if ( x[i] > x[i - 1] + EPS ) {
+            int j = i + 1;
+            // handle plateau (equal values within EPS)
+            while ( j < n - 1 && std::fabs(x[j] - x[i]) < EPS )
+                ++j;
+
+            // confirm actual peak (next distinct sample is smaller)
+            if ( x[j] < x[i] - EPS ) {
+                int left  = i;
+                int right = j - 1;
+                int mid   = (left + right) / 2;
+
+                // compute local base = minimum in window around the peak midpoint
+                int win_lo = std::max(0, mid - w);
+                int win_hi = std::min(n - 1, mid + w);
+
+                float base      = x[mid];
+                float local_max = x[mid];
+                for ( int k = win_lo; k <= win_hi; ++k ) {
+                    if ( x[k] < base )
+                        base = x[k];
+                    if ( x[k] > local_max )
+                        local_max = x[k];
+                }
+
+                // depth = how far above the local minimum this peak stands
+                float depth = x[mid] - base;
+
+                // local_range (for relative thresholding)
+                float local_range = local_max - base;
+                if ( local_range <= 0.0f )
+                    local_range = 1.0f; // avoid div-by-zero
+
+                // Decide acceptance:
+                // If an absolute min_depth is provided (>0) use it.
+                // Else if a relative min_depth_rel (>0) is provided, require depth >= min_depth_rel * local_range.
+                // Else accept any detected local maximum (no depth filtering).
+                bool accept = false;
+                if ( min_depth_abs > 0.0f ) {
+                    accept = (depth >= min_depth_abs);
+                }
+                else if ( min_depth_rel > 0.0f ) {
+                    accept = (depth >= min_depth_rel * local_range);
+                }
+                else {
+                    accept = true; // no depth requirement
+                }
+
+                if ( accept ) {
+                    // Enforce minimum distance: compare using 'depth' metric
+                    if ( ! midpoints.empty( ) && mid - midpoints.back( ) < min_distance ) {
+                        // replace the previous peak if this one is stronger (deeper)
+                        if ( depth > peak_depths.back( ) ) {
+                            midpoints.back( )   = mid;
+                            left_edges.back( )  = left;
+                            right_edges.back( ) = right;
+                            peak_depths.back( ) = depth;
+                        }
+                    }
+                    else {
+                        midpoints.push_back(mid);
+                        left_edges.push_back(left);
+                        right_edges.push_back(right);
+                        peak_depths.push_back(depth);
+                    }
+                }
+
+                i = j;
+                continue;
+            }
+        }
+        ++i;
+    }
+}
 
 // Needed to FindOuterTubeEdges function to work
 struct EdgeCandidate {
