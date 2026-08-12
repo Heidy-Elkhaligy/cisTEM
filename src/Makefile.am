@@ -293,7 +293,8 @@ bin_PROGRAMS =  cisTEM_job_control \
                 refine_template \
                 make_template_result \
                 prepare_stack_matchtemplate \
-                cisTEM_display 
+                cisTEM_display \
+                find_tube_diameters
 
 
 
@@ -1132,6 +1133,12 @@ azimuthal_average_CXXFLAGS = $(WX_CPPFLAGS_BASE)
 azimuthal_average_CPPFLAGS = $(WX_CPPFLAGS_BASE)
 azimuthal_average_LDADD    = libcore.a $(WX_LIBS_BASE) $(MKL_LIBS)
 azimuthal_average_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
+
+find_tube_diameters_SOURCES  = programs/find_tube_diameters/find_tube_diameters.cpp gui/PlotCurvePanel.cpp gui/mathplot.cpp
+find_tube_diameters_CXXFLAGS = $(WX_CPPFLAGS)
+find_tube_diameters_CPPFLAGS = $(WX_CPPFLAGS)
+find_tube_diameters_LDADD    = libcore.a $(WX_LIBS) $(MKL_LIBS)
+find_tube_diameters_LIBTOOLFLAGS = $(LIBTOOL_FLAGS)
 
 multiply_two_stacks_SOURCES  = programs/multiply_two_stacks/multiply_two_stacks.cpp
 multiply_two_stacks_CXXFLAGS = $(WX_CPPFLAGS_BASE)
