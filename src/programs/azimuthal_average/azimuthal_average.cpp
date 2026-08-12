@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iomanip>
 #include <memory>
+#include <sstream>
 
 // check scaling
 
@@ -70,6 +71,7 @@ void               ComputeCylindricalAverage(Image* current_image);
 float              ReturnAverageOfRealValuesOnVerticalEdgesNEW(Image* current_image, float wanted_mask_radius, bool invert_mask);
 float              ReturnVarianceOfRealValuesOnVerticalEdges(Image* current_image, float wanted_mask_radius, bool invert_mask);
 std::vector<float> GenerateRandomAnglesWithinRange(size_t count, float angle_range);
+std::string        floatToString(float value, int precision);
 
 IMPLEMENT_APP(AzimuthalAverageNew)
 
@@ -1676,7 +1678,10 @@ bool AzimuthalAverageNew::DoCalculation( ) {
             // I need to move this to another location to ensure saving the azimuthal averages volume with correct contrast (I need to invert real values)
             // This can't happen here it needs to be later when sum_images_after_aln will not be used anymore
             // save the azimuthal average model to an MRC file
-            model_file_name       = output_azimuthal_average_volume_filename + "_" + std::to_string(bin_index + 1) + ".mrc";
+            // set the precision of the bin spaning range and its precision to 2
+            //float bin_span        = ((bin_index * min_tube_diameter) + bin_range);
+            //float min_bin_span    = ((bin_index + 1) * min_tube_diameter);
+            model_file_name       = output_azimuthal_average_volume_filename + "_bin" + std::to_string(bin_index + 1) + "_" + floatToString(((min_tube_diameter + (bin_index * bin_range)) * pixel_size), 2) + "A_" + floatToString((min_tube_diameter + (bin_range * (bin_index + 1))) * pixel_size, 2) + "A.mrc";
             output_model_filename = new MRCFile(model_file_name, true, true);
             for ( long model_counter = 0; model_counter < model_dimension; model_counter++ ) {
                 sum_images_after_aln[bin_index].WriteSlice(output_model_filename, model_counter + 1);
@@ -1771,7 +1776,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // RUN THIS ON SINGLE THREAD IS BETTER
 //Image azimuthal_average_slice;
 #pragma omp parallel for schedule(dynamic, 1) num_threads(std::min(bins_count, max_threads)) default(none) shared(SPOT_RASTR, RASTR, prepare_projections_progress, current_image, bins_count, sum_whiten_images, model_volume, my_masked_volume, my_mask, input_3d, masked_3d, my_output_sum_image_filename,            \
-                                                                                                                  pixel_size, padding_factor, x_mask_center, y_mask_center, z_mask_center, sphere_mask_radius, filter_radius, use_outside_value, x_dim, y_dim, sum_images_after_aln,                                    \
+                                                                                                                  pixel_size, padding_factor, x_mask_center, y_mask_center, z_mask_center, sphere_mask_radius, filter_radius, use_outside_value, x_dim, y_dim, sum_images_after_aln, min_tube_diameter, bin_range,      \
                                                                                                                   outside_value, outside_weight, cosine_edge, number_of_models, input_mask, model_file_name, output_average_per_bin_filename, mask_edge, outer_mask_radius,                                             \
                                                                                                                   output_azimuthal_average_volume_filename, model_dimension, masked_projection_volume_3d, projection_volume_3d) private(projection_volume_image, padded_projection_volume_image, output_model_filename, \
                                                                                                                                                                                                                                         masked_projection_volume_image, masked_padded_projection_volume_image, my_white_mask, mask_volume, mask_projection, my_parameters)
@@ -1821,7 +1826,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 // I need to move this to another location to ensure saving the azimuthal averages volume with correct contrast (I need to invert real values)
                 // This can't happen here it needs to be later when sum_images_after_aln will not be used anymore
                 // save the azimuthal average model to an MRC file
-                model_file_name       = output_azimuthal_average_volume_filename + "_" + std::to_string(bin_index + 1) + ".mrc";
+                // float bin_span        = ((bin_index * min_tube_diameter) + bin_range);
+                // float min_bin_span    = ((bin_index + 1) * min_tube_diameter);
+                model_file_name       = output_azimuthal_average_volume_filename + "_bin" + std::to_string(bin_index + 1) + "_" + floatToString(((min_tube_diameter + (bin_index * bin_range)) * pixel_size), 2) + "A_" + floatToString((min_tube_diameter + (bin_range * (bin_index + 1))) * pixel_size, 2) + "A.mrc";
                 output_model_filename = new MRCFile(model_file_name, true, true);
                 for ( long model_counter = 0; model_counter < model_dimension; model_counter++ ) {
                     sum_images_after_aln[bin_index].WriteSlice(output_model_filename, model_counter + 1);
@@ -1908,7 +1915,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 sum_whiten_images[bin_index].InvertRealValues( );
                 sum_whiten_images[bin_index].Resize(x_dim, y_dim, 1, edge_value);
                 // save the azimuthal average model to an MRC file
-                model_file_name       = output_azimuthal_average_volume_filename + "_" + std::to_string(bin_index + 1) + ".mrc";
+                // float bin_span        = ((bin_index * min_tube_diameter) + bin_range);
+                // float min_bin_span    = ((bin_index + 1) * min_tube_diameter);
+                model_file_name       = output_azimuthal_average_volume_filename + "_bin" + std::to_string(bin_index + 1) + "_" + floatToString(((min_tube_diameter + (bin_index * bin_range)) * pixel_size), 2) + "A_" + floatToString((min_tube_diameter + (bin_range * (bin_index + 1))) * pixel_size, 2) + "A.mrc";
                 output_model_filename = new MRCFile(model_file_name, true, true);
                 for ( long model_counter = 0; model_counter < model_dimension; model_counter++ ) {
                     sum_whiten_images[bin_index].WriteSlice(output_model_filename, model_counter + 1);
@@ -4038,4 +4047,10 @@ std::vector<float> GenerateRandomAnglesWithinRange(size_t count, float angle_ran
     }
 
     return values;
+}
+
+std::string floatToString(float value, int precision) {
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(precision) << value;
+    return ss.str( );
 }
