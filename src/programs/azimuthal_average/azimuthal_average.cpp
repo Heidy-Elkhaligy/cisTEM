@@ -38,7 +38,7 @@ std::vector<float> sum_image_columns(Image* current_image);
 float              max_abs_column_sum(Image* current_image);
 void               save_all_columns_sum_to_file(const std::vector<std::vector<float>>& all_columns_sum, const std::string& filename);
 
-// Robust plateau-aware local maxima finder with depth filtering (no prominence)
+// Needed to FindOuterTubeEdges function to work
 static void local_maxima_1d(
         const std::vector<float>& x,
         std::vector<int>&         midpoints,
@@ -46,111 +46,8 @@ static void local_maxima_1d(
         std::vector<int>&         right_edges,
         float                     min_depth_abs = 0.0f, // absolute depth threshold (disabled if <= 0)
         float                     min_depth_rel = 0.0f, // relative depth (0..1) of local range, used if >0
-        int                       min_distance  = 10) // minimal horizontal separation
-{
-    midpoints.clear( );
-    left_edges.clear( );
-    right_edges.clear( );
+        int                       min_distance  = 10);
 
-    const int n = (int)x.size( );
-    if ( n < 3 )
-        return;
-
-    // global_range used only to scale tiny eps; not for depth decision
-    auto [min_it, max_it] = std::minmax_element(x.begin( ), x.end( ));
-    float global_range    = *max_it - *min_it;
-    if ( global_range <= 0.0f )
-        return;
-
-    // window for local statistics (use something related to min_distance)
-    int w = std::max(5, min_distance / 2);
-
-    // small epsilon scaled to signal magnitude to detect plateaus robustly
-    const float EPS = 1e-6f * std::max(1.0f, std::abs(*max_it));
-
-    // Store depths for non-maximum suppression comparison
-    std::vector<float> peak_depths;
-    peak_depths.reserve(n / 8);
-
-    int i = 1;
-    while ( i < n - 1 ) {
-        // detect rising edge into plateau/peak
-        if ( x[i] > x[i - 1] + EPS ) {
-            int j = i + 1;
-            // handle plateau (equal values within EPS)
-            while ( j < n - 1 && std::fabs(x[j] - x[i]) < EPS )
-                ++j;
-
-            // confirm actual peak (next distinct sample is smaller)
-            if ( x[j] < x[i] - EPS ) {
-                int left  = i;
-                int right = j - 1;
-                int mid   = (left + right) / 2;
-
-                // compute local base = minimum in window around the peak midpoint
-                int win_lo = std::max(0, mid - w);
-                int win_hi = std::min(n - 1, mid + w);
-
-                float base      = x[mid];
-                float local_max = x[mid];
-                for ( int k = win_lo; k <= win_hi; ++k ) {
-                    if ( x[k] < base )
-                        base = x[k];
-                    if ( x[k] > local_max )
-                        local_max = x[k];
-                }
-
-                // depth = how far above the local minimum this peak stands
-                float depth = x[mid] - base;
-
-                // local_range (for relative thresholding)
-                float local_range = local_max - base;
-                if ( local_range <= 0.0f )
-                    local_range = 1.0f; // avoid div-by-zero
-
-                // Decide acceptance:
-                // If an absolute min_depth is provided (>0) use it.
-                // Else if a relative min_depth_rel (>0) is provided, require depth >= min_depth_rel * local_range.
-                // Else accept any detected local maximum (no depth filtering).
-                bool accept = false;
-                if ( min_depth_abs > 0.0f ) {
-                    accept = (depth >= min_depth_abs);
-                }
-                else if ( min_depth_rel > 0.0f ) {
-                    accept = (depth >= min_depth_rel * local_range);
-                }
-                else {
-                    accept = true; // no depth requirement
-                }
-
-                if ( accept ) {
-                    // Enforce minimum distance: compare using 'depth' metric
-                    if ( ! midpoints.empty( ) && mid - midpoints.back( ) < min_distance ) {
-                        // replace the previous peak if this one is stronger (deeper)
-                        if ( depth > peak_depths.back( ) ) {
-                            midpoints.back( )   = mid;
-                            left_edges.back( )  = left;
-                            right_edges.back( ) = right;
-                            peak_depths.back( ) = depth;
-                        }
-                    }
-                    else {
-                        midpoints.push_back(mid);
-                        left_edges.push_back(left);
-                        right_edges.push_back(right);
-                        peak_depths.push_back(depth);
-                    }
-                }
-
-                i = j;
-                continue;
-            }
-        }
-        ++i;
-    }
-}
-
-// Needed to FindOuterTubeEdges function to work
 struct EdgeCandidate {
     float diff; // Contrast strength (amplitude difference)
     float midpoint; // Sub-pixel location
@@ -633,6 +530,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     }
 
     std::vector<std::vector<float>> all_columns_sum(number_of_input_images, std::vector<float>(x_dim, 0.0)); // saving those values to ensure debugging if the user want to
+    std::vector<std::vector<float>> all_columns_sum_cross_corr(number_of_input_images, std::vector<float>(x_dim, 0.0)); // saving those values to ensure debugging if the user want to
 
     // calculate the bin range
     float bin_range = (max_tube_diameter - min_tube_diameter) / bins_count;
@@ -641,8 +539,10 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     std::vector<float> best_sum_column(number_of_input_images, 0.0f);
     std::vector<float> x_shift_column(number_of_input_images, 0.0f);
     std::vector<float> all_diameters(number_of_input_images, 0.0f);
-    int                diameter_bins[number_of_input_images];
-    float              center_peak_index = y_dim / 2;
+    std::vector<float> all_diameters_cc(number_of_input_images, 0.0f);
+
+    int   diameter_bins[number_of_input_images];
+    float center_peak_index = y_dim / 2;
 
     // saving all the diameters and peaks in a text file
     // Open the diameter file in write mode
@@ -1099,7 +999,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     }
 
     delete sum_progress;
-
+    final_image.Deallocate( );
     // Image trial_image;
     // trial_image.Allocate(x_dim, y_dim, true);
     // trial_image.SetToConstant(0.0);
@@ -1212,14 +1112,15 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     float tuned_rotation_range = psi_step; ///2
     float tuned_step_size      = fine_tuning_psi_step;
     Image fine_tuning_average_image;
+    Image final_image_cc;
 
     wxPrintf("\nFinding Tube Rotation Using Cross-Correlation...\n\n");
     ProgressBar* my_aln_progress = new ProgressBar(number_of_input_images);
 
-#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, inner_radius_for_peak_search, outer_radius_for_peak_search, low_pass_resolution, x_dim, y_dim, use_memory, average_images, mask_edge,          \
-                                                                                            best_correlation_score, best_psi_value, best_x_shift_value, psi_step, tube_rotation, outer_mask_radius, use_auto_corr, use_ft, image_stack_filtered_masked, peak_values,              \
-                                                                                            max_threads, diameter_bins, sum_images, bins_count, tuned_rotation_range, tuned_step_size, my_aln_progress, x_shift_column, all_diameters, bin_range, current_image, all_columns_sum, \
-                                                                                            input_ctf_values_from_star_file, current_ctf, ctf_parameters_stack, min_tube_diameter, max_tube_diameter, center_peak_index, pixel_size, low_pass) private(my_image, average_image, tuning_average_image, final_image, fine_tuning_average_image, my_image_copy, my_image_tuned)
+#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, inner_radius_for_peak_search, outer_radius_for_peak_search, low_pass_resolution, x_dim, y_dim, use_memory, average_images, mask_edge, tube_rotation,         \
+                                                                                            best_correlation_score, best_psi_value, best_x_shift_value, psi_step, tube_rotation, outer_mask_radius, use_auto_corr, use_ft, image_stack_filtered_masked, peak_values,                            \
+                                                                                            max_threads, diameter_bins, sum_images, bins_count, tuned_rotation_range, tuned_step_size, my_aln_progress, x_shift_column, all_diameters_cc, bin_range, current_image, all_columns_sum_cross_corr, \
+                                                                                            input_ctf_values_from_star_file, current_ctf, ctf_parameters_stack, min_tube_diameter, max_tube_diameter, center_peak_index, pixel_size, low_pass) private(my_image, average_image, tuning_average_image, final_image_cc, fine_tuning_average_image, my_image_copy, my_image_tuned)
 
     for ( long aln_image_counter = 0; aln_image_counter < number_of_input_images; aln_image_counter++ ) {
 
@@ -1350,46 +1251,49 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // best_y_shift_value[aln_image_counter]     = local_best_y_shift;
 
         // Updating the tube diameters
-        final_image.Allocate(x_dim, y_dim, true);
-        final_image.SetToConstant(0.0);
+        final_image_cc.Allocate(x_dim, y_dim, true);
+        final_image_cc.SetToConstant(0.0);
 
         if ( use_memory ) {
-            final_image.CopyFrom(&image_stack_filtered_masked[aln_image_counter]);
+            final_image_cc.CopyFrom(&image_stack_filtered_masked[aln_image_counter]);
         }
         else {
 #pragma omp critical
-            final_image.ReadSlice(&my_input_file, aln_image_counter + 1);
-            final_image.ForwardFFT( );
-            final_image.ZeroCentralPixel( );
-            final_image.BackwardFFT( );
-            final_image.Normalize( );
+            final_image_cc.ReadSlice(&my_input_file, aln_image_counter + 1);
+            final_image_cc.ForwardFFT( );
+            final_image_cc.ZeroCentralPixel( );
+            final_image_cc.BackwardFFT( );
+            final_image_cc.Normalize( );
         }
 
         // here circle mask is fine to find peaks and helical diameter
         if ( outer_mask_radius != 0 ) {
-            final_image.CircleMask(outer_mask_radius);
+            final_image_cc.CircleMask(outer_mask_radius);
         }
         else if ( outer_mask_radius == 0 ) {
-            final_image.CircleMask(x_dim * 0.45);
+            final_image_cc.CircleMask(x_dim * 0.45);
         }
-        final_image.ForwardFFT( );
-        final_image.GaussianLowPassFilter((pixel_size * 2) / low_pass_resolution);
-        final_image.BackwardFFT( );
+        final_image_cc.ForwardFFT( );
+        final_image_cc.GaussianLowPassFilter((pixel_size * 2) / low_pass_resolution);
+        final_image_cc.BackwardFFT( );
         // removed the -psi from here as I want to rotate the image to be aligned with Y-axis as the average image to get the correct x-shift
-        final_image.Rotate2DInPlace(best_psi_value[aln_image_counter], FLT_MAX);
-        final_image.PhaseShift(best_x_shift_value[aln_image_counter], 0.0);
+        final_image_cc.Rotate2DInPlace(best_psi_value[aln_image_counter], FLT_MAX);
+        final_image_cc.PhaseShift(best_x_shift_value[aln_image_counter], 0.0);
+        // Debugging the Psi angle difference between the autocorr/Power spectrum and the cross-correlation values
+        // wxPrintf("Image %li has the best aln psi (cross_corr) as %f and tube rotation (autocorr/PSas %f \n", aln_image_counter + 1, best_psi_value[aln_image_counter], tube_rotation[aln_image_counter]);
+        // wxPrintf("Image %li has the best x_shift (cross_corr) as %f and from (autocorr/PS as %f \n", aln_image_counter + 1, best_x_shift_value[aln_image_counter], x_shift_column[aln_image_counter]);
+
         // find the outer edges peaks
-        all_columns_sum[aln_image_counter]              = sum_image_columns(&final_image);
-        auto [peak_one_column_sum, peak_two_column_sum] = FindOuterTubeEdges(all_columns_sum[aln_image_counter], min_tube_diameter, max_tube_diameter, false); //invert_contrast = false for now
+        all_columns_sum_cross_corr[aln_image_counter]   = sum_image_columns(&final_image_cc);
+        auto [peak_one_column_sum, peak_two_column_sum] = FindOuterTubeEdges(all_columns_sum_cross_corr[aln_image_counter], min_tube_diameter, max_tube_diameter, false); //invert_contrast = false for now
         // save the peaks to an output file later
         peak_values[aln_image_counter] = {aln_image_counter, {peak_one_column_sum, peak_two_column_sum}};
 
-        final_image.Deallocate( );
         my_image_copy.Deallocate( );
         my_image_tuned.Deallocate( );
         // find the final diameter and save it
-        float tube_diameter              = std::abs((peak_one_column_sum - peak_two_column_sum)); // * pixel_size
-        all_diameters[aln_image_counter] = tube_diameter;
+        float tube_diameter                 = std::abs((peak_one_column_sum - peak_two_column_sum)); // * pixel_size
+        all_diameters_cc[aln_image_counter] = tube_diameter;
 
         // Update the index for the class assignment of each image based on its diameter
         int which_bin_index_int = (tube_diameter - min_tube_diameter) / bin_range; // it will always round down so 0.9999 > 0
@@ -1402,12 +1306,12 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
     delete my_aln_progress;
     delete[] average_images;
-    final_image.Deallocate( );
+    final_image_cc.Deallocate( );
 
     // Check if the all diameters file is open
     if ( diameters_file.is_open( ) ) {
-        for ( size_t i = 0; i < all_diameters.size( ); ++i ) {
-            diameters_file << i + 1 << ", " << all_diameters[i] << ", " << all_diameters[i] * pixel_size << '\n';
+        for ( size_t i = 0; i < all_diameters_cc.size( ); ++i ) {
+            diameters_file << i + 1 << ", " << all_diameters_cc[i] << ", " << all_diameters_cc[i] * pixel_size << '\n';
         }
         diameters_file.close( );
     }
@@ -3856,15 +3760,15 @@ std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
             // ----------------------------------------------------
             float score = contrast + (gap_score * 2) - center_penalty; //increasing the gap score penalty
 
-            std::cout
-                    << "L=" << (int)std::round(l.midpoint)
-                    << " R=" << (int)std::round(r.midpoint)
-                    << " gap=" << gap
-                    << " contrast=" << contrast
-                    << " gap_score=" << gap_score
-                    << " center_dist=" << center_dist
-                    << " score=" << score
-                    << "\n";
+            // std::cout
+            //         << "L=" << (int)std::round(l.midpoint)
+            //         << " R=" << (int)std::round(r.midpoint)
+            //         << " gap=" << gap
+            //         << " contrast=" << contrast
+            //         << " gap_score=" << gap_score
+            //         << " center_dist=" << center_dist
+            //         << " score=" << score
+            //         << "\n";
 
             if ( score > best_score ) {
                 best_score     = score;
