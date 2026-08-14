@@ -650,7 +650,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
         if ( low_pass ) {
             // will applying a low pass filter here improve finding the correct rotation in FT
-            current_image.GaussianLowPassFilter((pixel_size * 2) / low_pass_resolution);
+            current_image.GaussianLowPassFilter((pixel_size * 2.0) / low_pass_resolution);
         }
 
         if ( use_auto_corr ) {
@@ -904,7 +904,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // to apply Gaussian filter you need to be in Fourier space
         // Nyquist frequency value is the pixel size * 2
         // if we want to apply a gaussian pass filter that will make the image at 150 angestrom to be well smoothened and get better peaks
-        final_image.GaussianLowPassFilter((pixel_size * 2) / low_pass_resolution); // use a sigma between 0-1 for best results as this will remove the high frequency information
+        final_image.GaussianLowPassFilter((pixel_size * 2.0) / low_pass_resolution); // use a sigma between 0-1 for best results as this will remove the high frequency information
         final_image.BackwardFFT( );
 
         if ( use_auto_corr ) {
@@ -1016,7 +1016,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         temp.SetToConstant(0.0);
         temp.CopyFrom(&sum_images[bin_index]);
 
-        sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial.mrc", bin_index + 1);
+        //sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial.mrc", bin_index + 1);
 
         // Vertically summing the image to ensure cross-correlation doesn't correlate by mistake to a wrong area if input images are pre-aligned
         sum_image_direction(&sum_images[bin_index], 2);
@@ -1028,9 +1028,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         sum_images[bin_index].ApplyRampFilter( );
         // do rotational average then top down averaging to ensure the average image is symmetrical as much as possible
         sum_images[bin_index].AverageRotationally( );
-        sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial_after_average_rotationally.mrc", bin_index + 1);
+        //sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial_after_average_rotationally.mrc", bin_index + 1);
         sum_image_direction(&sum_images[bin_index], 2);
-        sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial_after_second_sum_direction.mrc", bin_index + 1);
+        //sum_images[bin_index].QuickAndDirtyWriteSlice("sum_images_initial_after_second_sum_direction.mrc", bin_index + 1);
 
         // // shift sum image to the center after padding based on tube peaks
         // // This shift is necessary at this point to ensure the cross-correlation shift is centered correctly later
@@ -1145,7 +1145,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         //testing adding a low pass filter on the original image before getting the correct shift from the correlation and how that can affect the centering of the mask at the end
         if ( low_pass ) {
             my_image.ForwardFFT( );
-            my_image.GaussianLowPassFilter((pixel_size * 2) / low_pass_resolution); //150
+            my_image.GaussianLowPassFilter((pixel_size * 2.0) / low_pass_resolution); //150
             my_image.BackwardFFT( );
         }
         //my_image.QuickAndDirtyWriteSlice("low_pass_filtered_image_for_comparison.mrc", aln_image_counter + 1);
@@ -1274,25 +1274,35 @@ bool AzimuthalAverageNew::DoCalculation( ) {
             final_image_cc.CircleMask(x_dim * 0.45);
         }
         final_image_cc.ForwardFFT( );
-        final_image_cc.GaussianLowPassFilter((pixel_size * 2) / low_pass_resolution);
+        final_image_cc.GaussianLowPassFilter((pixel_size * 2.0) / low_pass_resolution);
         final_image_cc.BackwardFFT( );
         // removed the -psi from here as I want to rotate the image to be aligned with Y-axis as the average image to get the correct x-shift
         final_image_cc.Rotate2DInPlace(best_psi_value[aln_image_counter], FLT_MAX);
+        // is the phase shift the cause of the difference in the diameter between azimuthal average and findtubediameters??? (NO)
         final_image_cc.PhaseShift(best_x_shift_value[aln_image_counter], 0.0);
+
+#pragma omp critical
+        final_image_cc.QuickAndDirtyWriteSlice("aligned_final_from_cc.mrc", aln_image_counter + 1);
         // Debugging the Psi angle difference between the autocorr/Power spectrum and the cross-correlation values
         // wxPrintf("Image %li has the best aln psi (cross_corr) as %f and tube rotation (autocorr/PSas %f \n", aln_image_counter + 1, best_psi_value[aln_image_counter], tube_rotation[aln_image_counter]);
         // wxPrintf("Image %li has the best x_shift (cross_corr) as %f and from (autocorr/PS as %f \n", aln_image_counter + 1, best_x_shift_value[aln_image_counter], x_shift_column[aln_image_counter]);
 
         // find the outer edges peaks
-        all_columns_sum_cross_corr[aln_image_counter]   = sum_image_columns(&final_image_cc);
-        auto [peak_one_column_sum, peak_two_column_sum] = FindOuterTubeEdges(all_columns_sum_cross_corr[aln_image_counter], min_tube_diameter, max_tube_diameter, false); //invert_contrast = false for now
+        all_columns_sum_cross_corr[aln_image_counter] = sum_image_columns(&final_image_cc);
+        // auto [peak_one_column_sum, peak_two_column_sum] = FindOuterTubeEdges(all_columns_sum_cross_corr[aln_image_counter], min_tube_diameter, max_tube_diameter, false); //invert_contrast = false for now
+        std::pair<float, float> edges = FindOuterTubeEdges(all_columns_sum_cross_corr[aln_image_counter], min_tube_diameter, max_tube_diameter, false); //invert_contrast = false for now
+
         // save the peaks to an output file later
-        peak_values[aln_image_counter] = {aln_image_counter, {peak_one_column_sum, peak_two_column_sum}};
+        // peak_values[aln_image_counter] = {aln_image_counter, {peak_one_column_sum, peak_two_column_sum}};
+
+        peak_values[aln_image_counter] = {aln_image_counter, {edges.first, edges.second}};
 
         my_image_copy.Deallocate( );
         my_image_tuned.Deallocate( );
         // find the final diameter and save it
-        float tube_diameter                 = std::abs((peak_one_column_sum - peak_two_column_sum)); // * pixel_size
+        // float tube_diameter                 = std::abs((peak_one_column_sum - peak_two_column_sum)); // * pixel_size
+        float tube_diameter = std::abs((edges.first - edges.second)); // * pixel_size
+
         all_diameters_cc[aln_image_counter] = tube_diameter;
 
         // Update the index for the class assignment of each image based on its diameter
@@ -1319,7 +1329,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     //save the peaks to the output file
     if ( peak_file.is_open( ) ) {
         for ( auto& r : peak_values ) {
-            peak_file << r.first << ", " << r.second.first << ", " << r.second.second << "\n";
+            peak_file << r.first + 1 << ", " << r.second.first << ", " << r.second.second << "\n";
         }
         peak_file.close( );
     }
@@ -3614,23 +3624,23 @@ std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
     std::sort(pos_mids.begin( ), pos_mids.end( ));
     std::sort(neg_mids.begin( ), neg_mids.end( ));
 
-    // ------------------------------------------------------------
-    // DEBUG: profile + peaks
-    // ------------------------------------------------------------
-    std::cout << "\n=== PROFILE DEBUG ===\n";
-    for ( int i = 0; i < n; ++i ) {
-        std::cout << i
-                  << " norm=" << norm[i]
-                  << " inv=" << norm_inv[i];
+    // // ------------------------------------------------------------
+    // // DEBUG: profile + peaks
+    // // ------------------------------------------------------------
+    // std::cout << "\n=== PROFILE DEBUG ===\n";
+    // for ( int i = 0; i < n; ++i ) {
+    //     std::cout << i
+    //               << " norm=" << norm[i]
+    //               << " inv=" << norm_inv[i];
 
-        if ( std::find(pos_mids.begin( ), pos_mids.end( ), i) != pos_mids.end( ) )
-            std::cout << " <-- POS";
+    //     if ( std::find(pos_mids.begin( ), pos_mids.end( ), i) != pos_mids.end( ) )
+    //         std::cout << " <-- POS";
 
-        if ( std::find(neg_mids.begin( ), neg_mids.end( ), i) != neg_mids.end( ) )
-            std::cout << " <-- NEG";
+    //     if ( std::find(neg_mids.begin( ), neg_mids.end( ), i) != neg_mids.end( ) )
+    //         std::cout << " <-- NEG";
 
-        std::cout << "\n";
-    }
+    //     std::cout << "\n";
+    // }
 
     // ------------------------------------------------------------
     // 3. Gradient (for edge localization)
@@ -3724,7 +3734,7 @@ std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
 
     const float IMAGE_CENTER = 0.5f * (n - 1);
 
-    std::cout << "\n=== FINAL SCORING ===\n";
+    //std::cout << "\n=== FINAL SCORING ===\n";
 
     for ( const auto& l : left_candidates ) {
         for ( const auto& r : right_candidates ) {
@@ -3778,9 +3788,10 @@ std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
         }
     }
 
-    std::cout << "\n>>> CHOSEN: L=" << best_left_idx
-              << " R=" << best_right_idx
-              << " score=" << best_score << "\n";
+    // std::cout << "\n>>> CHOSEN: L=" << best_left_idx
+    //           << " R=" << best_right_idx
+    //           << " score=" << best_score << "\n";
+    //wxPrintf("\nCHOSEN: L= %i, R=%i, score=%f\n", best_left_idx, best_right_idx, best_score);
 
     return {best_left_idx, best_right_idx};
 }
