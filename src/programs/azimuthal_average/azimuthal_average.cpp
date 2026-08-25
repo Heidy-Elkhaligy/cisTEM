@@ -923,6 +923,14 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // calculate the required x shift to center the tubes
         auto [peak_one_column_sum, peak_two_column_sum] = FindOuterTubeEdges(all_columns_sum[image_counter], min_tube_diameter, max_tube_diameter, false); //invert_contrast = false for now
 
+        // If no tube edges are computed for whatever reason the results of the two peaks will be {-1,-1}.
+        // In that situation we need to make an assumption that the tube edges are the image edges and later we can discard those ??
+        // ADDED NEW to account for missing tube/helical edges
+
+        if ( peak_one_column_sum == -1 || peak_two_column_sum == -1 ) {
+            peak_one_column_sum = 1;
+            peak_two_column_sum = x_dim - 1;
+        }
         // The next line not needed
         float tube_center_column_sum          = std::abs(peak_one_column_sum - peak_two_column_sum) / 2;
         float distance_from_center_column_sum = -((peak_one_column_sum + peak_two_column_sum) / 2 - center_peak_index);
@@ -1114,11 +1122,26 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     Image fine_tuning_average_image;
     Image final_image_cc;
 
+    //Added new as OMP was causing problems when writing images to a file that is not opened and have set dimensions and header information
+    MRCFile final_image_cc_output("aligned_final_from_cc.mrc", true);
+    if ( ! final_image_cc_output.IsOpen( ) ) {
+        final_image_cc_output.OpenFile("aligned_final_from_cc.mrc", true);
+        if ( ! final_image_cc_output.IsOpen( ) ) {
+            wxPrintf("ERROR: Could not open '%s' for writing\n", "aligned_final_from_cc.mrc");
+            DEBUG_ABORT;
+        }
+    }
+    final_image_cc_output.my_header.SetNumberOfImages(number_of_input_images);
+    final_image_cc_output.my_header.SetDimensionsImage(x_dim, y_dim);
+    final_image_cc_output.SetPixelSize(pixel_size);
+    final_image_cc_output.WriteHeader( );
+    final_image_cc_output.rewrite_header_on_close = true;
+
     wxPrintf("\nFinding Tube Rotation Using Cross-Correlation...\n\n");
     ProgressBar* my_aln_progress = new ProgressBar(number_of_input_images);
 
 #pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, inner_radius_for_peak_search, outer_radius_for_peak_search, low_pass_resolution, x_dim, y_dim, use_memory, average_images, mask_edge, tube_rotation,         \
-                                                                                            best_correlation_score, best_psi_value, best_x_shift_value, psi_step, tube_rotation, outer_mask_radius, use_auto_corr, use_ft, image_stack_filtered_masked, peak_values,                            \
+                                                                                            best_correlation_score, best_psi_value, best_x_shift_value, psi_step, tube_rotation, outer_mask_radius, use_auto_corr, use_ft, image_stack_filtered_masked, peak_values, final_image_cc_output,     \
                                                                                             max_threads, diameter_bins, sum_images, bins_count, tuned_rotation_range, tuned_step_size, my_aln_progress, x_shift_column, all_diameters_cc, bin_range, current_image, all_columns_sum_cross_corr, \
                                                                                             input_ctf_values_from_star_file, current_ctf, ctf_parameters_stack, min_tube_diameter, max_tube_diameter, center_peak_index, pixel_size, low_pass) private(my_image, average_image, tuning_average_image, final_image_cc, fine_tuning_average_image, my_image_copy, my_image_tuned)
 
@@ -1282,7 +1305,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         final_image_cc.PhaseShift(best_x_shift_value[aln_image_counter], 0.0);
 
 #pragma omp critical
-        final_image_cc.QuickAndDirtyWriteSlice("aligned_final_from_cc.mrc", aln_image_counter + 1);
+        final_image_cc.WriteSlice(&final_image_cc_output, aln_image_counter + 1);
         // Debugging the Psi angle difference between the autocorr/Power spectrum and the cross-correlation values
         // wxPrintf("Image %li has the best aln psi (cross_corr) as %f and tube rotation (autocorr/PSas %f \n", aln_image_counter + 1, best_psi_value[aln_image_counter], tube_rotation[aln_image_counter]);
         // wxPrintf("Image %li has the best x_shift (cross_corr) as %f and from (autocorr/PS as %f \n", aln_image_counter + 1, best_x_shift_value[aln_image_counter], x_shift_column[aln_image_counter]);
@@ -1291,6 +1314,14 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         all_columns_sum_cross_corr[aln_image_counter] = sum_image_columns(&final_image_cc);
         // auto [peak_one_column_sum, peak_two_column_sum] = FindOuterTubeEdges(all_columns_sum_cross_corr[aln_image_counter], min_tube_diameter, max_tube_diameter, false); //invert_contrast = false for now
         std::pair<float, float> edges = FindOuterTubeEdges(all_columns_sum_cross_corr[aln_image_counter], min_tube_diameter, max_tube_diameter, false); //invert_contrast = false for now
+
+        // If no tube edges are computed for whatever reason the results of the two peaks will be {-1,-1}.
+        // In that situation we need to make an assumption that the tube edges are the image edges and later we can discard those ??
+        // ADDED NEW to account for missing tube/helical edges
+        if ( edges.first == -1.0f || edges.second == -1.0f ) {
+            edges.first  = 1;
+            edges.second = x_dim - 1;
+        }
 
         // save the peaks to an output file later
         // peak_values[aln_image_counter] = {aln_image_counter, {peak_one_column_sum, peak_two_column_sum}};
