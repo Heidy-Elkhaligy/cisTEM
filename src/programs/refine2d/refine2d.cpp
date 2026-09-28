@@ -223,6 +223,9 @@ bool Refine2DApp::DoCalculation( ) {
     cisTEMParameterLine parameter_average;
     cisTEMParameterLine parameter_variance;
 
+    // setting normalize particles to false as I am using pre-normalized and whitened RASTR particles
+    normalize_particles = false;
+
     //	ZeroFloatArray(input_parameters, 17);
     //	ZeroFloatArray(output_parameters, 17);
     //	ZeroFloatArray(parameter_average, 17);
