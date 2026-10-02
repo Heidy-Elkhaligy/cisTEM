@@ -46,7 +46,7 @@ static void local_maxima_1d(
         std::vector<int>&         right_edges,
         float                     min_depth_abs = 0.0f, // absolute depth threshold (disabled if <= 0)
         float                     min_depth_rel = 0.0f, // relative depth (0..1) of local range, used if >0
-        int                       min_distance  = 10);
+        int                       min_distance  = 2); //changed min distance to 2 to get more peaks
 
 struct EdgeCandidate {
     float diff; // Contrast strength (amplitude difference)
@@ -2494,16 +2494,16 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         RASTR_adjusted_x_shifts = new float[number_of_input_images * number_of_models]( );
         RASTR_adjusted_y_shifts = new float[number_of_input_images * number_of_models]( );
 
-        float RASTR_adjusted_center_x_shifts[number_of_input_images];
-        float RASTR_adjusted_center_y_shifts[number_of_input_images];
+        // float RASTR_adjusted_center_x_shifts[number_of_input_images];
+        // float RASTR_adjusted_center_y_shifts[number_of_input_images];
 
-        float RASTR_adjusted_center_aligned_x_shifts[number_of_input_images];
-        float RASTR_adjusted_center_aligned_y_shifts[number_of_input_images];
-        //Will make the outer loop on one thread but inner loop multi-threaded to ensure the sequential processing of the models!
+        // float RASTR_adjusted_center_aligned_x_shifts[number_of_input_images];
+        // float RASTR_adjusted_center_aligned_y_shifts[number_of_input_images];
+        // //Will make the outer loop on one thread but inner loop multi-threaded to ensure the sequential processing of the models!
         //mask_RASTR_projection, mask_RASTR_projection_centered,
         for ( long model_counter = 0; model_counter < number_of_models; model_counter++ ) {
-#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, best_psi_value, best_x_shift_value, number_of_models, input_3d, mask_upweighted, image_stack, model_counter, noise_power_spectrum, mask_falloff, masked_upweighted_output, random_phi_angles, mask_RASTR_projection, mask_RASTR_projection_centered, RASTR_adjusted_center_aligned_x_shifts, RASTR_adjusted_center_aligned_y_shifts,                                                                                                                                                                   \
-                                                                                            ctf_parameters_stack, max_threads, diameter_bins, bins_count, current_image, mask_subtract_progress, align_upweighted, RASTR_projections_output, use_memory, adjusted_x_shifts, adjusted_y_shifts, RASTR_adjusted_center_x_shifts, RASTR_adjusted_center_y_shifts, input_ctf_values_from_star_file, current_ctf, pixel_size, padding_factor, masked_3d, x_mask_center, y_mask_center, x_dim, y_dim, z_mask_center, RASTR_adjusted_x_shifts, RASTR_adjusted_y_shifts, mask_projection, input_mask, filter_radius, outside_weight, cosine_edge, \
+#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, best_psi_value, best_x_shift_value, number_of_models, input_3d, mask_upweighted, image_stack, model_counter, noise_power_spectrum, mask_falloff, masked_upweighted_output, random_phi_angles, mask_RASTR_projection, mask_RASTR_projection_centered,                                                                                                                                                                                   \
+                                                                                            ctf_parameters_stack, max_threads, diameter_bins, bins_count, current_image, mask_subtract_progress, align_upweighted, RASTR_projections_output, use_memory, adjusted_x_shifts, adjusted_y_shifts, input_ctf_values_from_star_file, current_ctf, pixel_size, padding_factor, masked_3d, x_mask_center, y_mask_center, x_dim, y_dim, z_mask_center, RASTR_adjusted_x_shifts, RASTR_adjusted_y_shifts, mask_projection, input_mask, filter_radius, outside_weight, cosine_edge, \
                                                                                             center_upweighted, sphere_mask_radius, RASTR_output_filename, my_output_RASTR_filename, projection_volume_3d, masked_projection_volume_3d) private(phi, projection_3d, projection_image, padded_projection_image, my_parameters_for_subtraction, mask_projection_image, padded_mask_projection_image, mask_parameters, subtracted_RASTR_image, centered_upweighted_image, unmasked_projection_image, unmasked_padded_projection_image, unmasked_projection_3d)
 
             for ( long subtraction_image_counter = 0; subtraction_image_counter < number_of_input_images; subtraction_image_counter++ ) {
@@ -2703,9 +2703,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     padded_mask_projection_image.ClipInto(&mask_projection_image);
 
                     if ( ! mask_RASTR_projection.IsOpen( ) ) {
-                        mask_RASTR_projection.OpenFile("masked_upweighted_regions_no_rotation_shift.mrc", true);
+                        mask_RASTR_projection.OpenFile("masked_projection_no_rotation_shift.mrc", true);
                         if ( ! mask_RASTR_projection.IsOpen( ) ) {
-                            wxPrintf("ERROR: Could not open 'masked_upweighted_regions_no_rotation_shift.mrc' for writing\n");
+                            wxPrintf("ERROR: Could not open 'masked_projection_no_rotation_shift.mrc' for writing\n");
                             DEBUG_ABORT;
                         }
                     }
@@ -2724,9 +2724,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     mask_projection_image.Rotate2DInPlace(best_psi_value[subtraction_image_counter], FLT_MAX);
 
                     if ( ! mask_RASTR_projection_centered.IsOpen( ) ) {
-                        mask_RASTR_projection_centered.OpenFile("masked_upweighted_regions_no_rotation_shift.mrc", true);
+                        mask_RASTR_projection_centered.OpenFile("masked_projection_no_rotation_shift.mrc", true);
                         if ( ! mask_RASTR_projection_centered.IsOpen( ) ) {
-                            wxPrintf("ERROR: Could not open 'masked_upweighted_regions_no_rotation_shift.mrc' for writing\n");
+                            wxPrintf("ERROR: Could not open 'masked_projection_no_rotation_shift.mrc' for writing\n");
                             DEBUG_ABORT;
                         }
                     }
@@ -2745,61 +2745,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     }
 #pragma omp critical
                     subtracted_RASTR_image.WriteSlice(&masked_upweighted_output, current_counter + 1);
-                    // if user specified a masked upweighted region should be generated then it can be centered (not aligned) or (aligned not centered) or (centered and aligned) or (saved as is not aligned not centered)
-                    // if the user specified that the upweighted regions should be centered before saving them
-                    // Here we need to center the upweighted region to the center of the image not the center of the tube
-                    // we need to do further adjutments to the calculated shift
-                    RotationMatrix RASTR_center_matrix;
-                    float          RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z;
-
-                    // // generate the full rotation matrix
-                    // Note: reversing order and negating angles to apply the inverse rotation
-                    RASTR_center_matrix.SetToEulerRotation(-(90.0 - best_psi_value[subtraction_image_counter]), -90.0, -RASTR_random_phi); //-phi
-
-                    //Maybe instead of using the x_mask_center use the adjusted_x_shift which is for the center of the tube instead of center of the mask to calculate the correct shift???
-                    // RASTR_center_matrix.RotateCoords((x_mask_center - adjusted_x_shifts[image_counter] - current_image.physical_address_of_box_center_y), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z);
-                    RASTR_center_matrix.RotateCoords((adjusted_x_shifts[subtraction_image_counter]), (0.0), (0.0), RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z);
-
-                    // center the masked upweighted regions to the center of the image
-                    RASTR_adjusted_center_x_shifts[subtraction_image_counter] = RASTR_center_rotated_x;
-                    RASTR_adjusted_center_y_shifts[subtraction_image_counter] = RASTR_center_rotated_y;
-
-                    RotationMatrix RASTR_center_aligned_matrix;
-                    float          RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z;
-
-                    // // generate the full rotation matrix
-                    // Note: reversing order and negating angles to apply the inverse rotation
-                    RASTR_center_aligned_matrix.SetToEulerRotation(-90.0, -90.0, -RASTR_random_phi); //-phi
-
-                    //Maybe instead of using the x_mask_center use the adjusted_x_shift which is for the center of the tube instead of center of the mask to calculate the correct shift???
-                    // RASTR_center_matrix.RotateCoords((x_mask_center - adjusted_x_shifts[image_counter] - current_image.physical_address_of_box_center_y), (y_mask_center - current_image.physical_address_of_box_center_y), (z_mask_center - current_image.physical_address_of_box_center_x), RASTR_center_rotated_x, RASTR_center_rotated_y, RASTR_center_rotated_z);
-
-                    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                    /////////////////////////////////////////////////////////// IMPORTANT ///////////////////////////////////////////////////////////////////
-                    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                    // This line is working but center the aligend images to the position of the mask in 3d
-                    // can subtracting the RASTR adj shift from the (x_mask_center - current_image.physical_address_of_box_center) vertically center the aligned upweighted regions to the center
-                    //RASTR_center_aligned_matrix.RotateCoords((adjusted_x_shifts[subtraction_image_counter]), (0.0), (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
-                    //RASTR_center_aligned_matrix.RotateCoords((RASTR_adjusted_x_shifts[subtraction_image_counter]), (0.0), (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
-                    // I forgot to use the RASTR_Adjusted_center_x_shifts instead of RASTR adjusted_shifts to center the upweighted regions to the middle of the sphere
-                    // The question here do I need to also include the RASTR_adjusted_center_y_shifts ????
-                    //RASTR_center_aligned_matrix.RotateCoords((RASTR_adjusted_center_x_shifts[subtraction_image_counter]), (0.0), (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
-                    RASTR_center_aligned_matrix.RotateCoords((RASTR_adjusted_center_x_shifts[subtraction_image_counter]), (RASTR_adjusted_center_y_shifts[subtraction_image_counter]), (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
-
-                    //TODO:
-                    // I will go back to the RASTR adjusted x and y shifts as inputs
-                    //RASTR_center_aligned_matrix.RotateCoords((RASTR_adjusted_x_shifts[subtraction_image_counter]), RASTR_adjusted_y_shifts[subtraction_image_counter], (0.0), RASTR_center_aligned_rotated_x, RASTR_center_aligned_rotated_y, RASTR_center_aligned_rotated_z);
-
-                    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-                    // center the masked upweighted regions to the center of the image
-                    RASTR_adjusted_center_aligned_x_shifts[subtraction_image_counter] = RASTR_center_aligned_rotated_x;
-                    RASTR_adjusted_center_aligned_y_shifts[subtraction_image_counter] = RASTR_center_aligned_rotated_y;
 
                     if ( center_upweighted == true && align_upweighted == false ) {
-                        //subtracted_RASTR_image.PhaseShift(RASTR_adjusted_x_shifts[current_counter], RASTR_adjusted_y_shifts[current_counter]);
-                        subtracted_RASTR_image.PhaseShift(RASTR_adjusted_center_x_shifts[subtraction_image_counter], RASTR_adjusted_center_y_shifts[subtraction_image_counter]); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
+                        subtracted_RASTR_image.PhaseShift(RASTR_adjusted_x_shifts[current_counter], RASTR_adjusted_y_shifts[current_counter]);
 
 #pragma omp critical
                         subtracted_RASTR_image.WriteSlice(&my_output_RASTR_filename, current_counter + 1);
@@ -2811,16 +2759,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                         subtracted_RASTR_image.WriteSlice(&my_output_RASTR_filename, current_counter + 1);
                     }
                     else if ( (align_upweighted == true && center_upweighted == true) ) {
-                        subtracted_RASTR_image.Rotate2DInPlace(best_psi_value[subtraction_image_counter], FLT_MAX);
-                        //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                        // Depending on the value of the Phi, we may need to change the shift along x so that it all goes correctly to the center of the image.///
-                        //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                        //subtracted_RASTR_image.PhaseShift(adjusted_x_shifts[current_counter], 0.0); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
-
                         subtracted_RASTR_image.PhaseShift(RASTR_adjusted_x_shifts[current_counter], RASTR_adjusted_y_shifts[current_counter]);
 
-                        //subtracted_RASTR_image.PhaseShift(RASTR_adjusted_center_aligned_x_shifts[subtraction_image_counter], RASTR_adjusted_center_aligned_y_shifts[subtraction_image_counter]); //never - RASTR_Adjusted //adjusted_x_shift will make the center of the tube in the middel of the image not the center of the masked upweighted region
-                        // should I change the above line to RASTR_adjusted_center_aligned_x_Shifts???
+                        subtracted_RASTR_image.Rotate2DInPlace(best_psi_value[subtraction_image_counter], FLT_MAX);
 #pragma omp critical
                         subtracted_RASTR_image.WriteSlice(&my_output_RASTR_filename, current_counter + 1);
                     }
@@ -2899,12 +2840,12 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     }
                     else if ( center_upweighted == false && align_upweighted == false ) { // since they are masked so we need the RASTR adjusted shift to know the exact location of the upweghted region
                         // NO PIXEL SIZE WITH RASTR_ADJ_CENTER ??????????????????????????????
-                        RASTR_output_params.all_parameters[current_counter].x_shift = RASTR_adjusted_center_x_shifts[image_counter] * pixel_size; // -RASTR_adjusted_x_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
-                        RASTR_output_params.all_parameters[current_counter].y_shift = RASTR_adjusted_center_y_shifts[image_counter] * pixel_size; // -RASTR_adjusted_y_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
+                        RASTR_output_params.all_parameters[current_counter].x_shift = RASTR_adjusted_x_shifts[image_counter] * pixel_size; // -RASTR_adjusted_x_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
+                        RASTR_output_params.all_parameters[current_counter].y_shift = RASTR_adjusted_y_shifts[image_counter] * pixel_size; // -RASTR_adjusted_y_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
                     }
                     else if ( center_upweighted == false && align_upweighted == true ) {
-                        RASTR_output_params.all_parameters[current_counter].x_shift = RASTR_adjusted_center_aligned_x_shifts[image_counter] * pixel_size; // -RASTR_adjusted_x_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
-                        RASTR_output_params.all_parameters[current_counter].y_shift = RASTR_adjusted_center_aligned_y_shifts[image_counter] * pixel_size; // -RASTR_adjusted_y_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
+                        RASTR_output_params.all_parameters[current_counter].x_shift = RASTR_adjusted_x_shifts[image_counter] * pixel_size; // -RASTR_adjusted_x_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
+                        RASTR_output_params.all_parameters[current_counter].y_shift = RASTR_adjusted_y_shifts[image_counter] * pixel_size; // -RASTR_adjusted_y_shifts[current_counter] * pixel_size (center the upweighted region in the middle)
                     }
                 }
                 else { // if not masked then we are saving the aligned centered image
@@ -3494,14 +3435,139 @@ void save_all_columns_sum_to_file(
 //     return std::make_pair(bestPairIdx.first, bestPairIdx.second);
 // }
 
+// OLD local_maxima_1d
 // Robust plateau-aware local maxima finder with depth filtering (no prominence)
+// static void local_maxima_1d(
+//         const std::vector<float>& x,
+//         std::vector<int>&         midpoints,
+//         std::vector<int>&         left_edges,
+//         std::vector<int>&         right_edges,
+//         float                     min_depth_abs, // absolute depth threshold (disabled if <= 0)
+//         float                     min_depth_rel, // relative depth (0..1) of local range, used if >0
+//         int                       min_distance) // minimal horizontal separation
+// {
+//     midpoints.clear( );
+//     left_edges.clear( );
+//     right_edges.clear( );
+
+//     const int n = (int)x.size( );
+//     if ( n < 3 )
+//         return;
+
+//     // global_range used only to scale tiny eps; not for depth decision
+//     auto [min_it, max_it] = std::minmax_element(x.begin( ), x.end( ));
+//     float global_range    = *max_it - *min_it;
+//     if ( global_range <= 0.0f )
+//         return;
+
+//     // window for local statistics (use something related to min_distance)
+//     int w = std::max(5, min_distance / 2);
+
+//     // small epsilon scaled to signal magnitude to detect plateaus robustly
+//     const float EPS = 1e-6f * std::max(1.0f, std::abs(*max_it));
+
+//     // Store depths for non-maximum suppression comparison
+//     std::vector<float> peak_depths;
+//     peak_depths.reserve(n / 8);
+
+//     int i = 1;
+//     while ( i < n - 1 ) {
+//         // detect rising edge into plateau/peak
+//         if ( x[i] > x[i - 1] + EPS ) {
+//             int j = i + 1;
+//             // handle plateau (equal values within EPS)
+//             while ( j < n - 1 && std::fabs(x[j] - x[i]) < EPS )
+//                 ++j;
+
+//             // confirm actual peak (next distinct sample is smaller)
+//             if ( x[j] < x[i] - EPS ) {
+//                 int left  = i;
+//                 int right = j - 1;
+//                 int mid   = (left + right) / 2;
+
+//                 // compute local base = minimum in window around the peak midpoint
+//                 int win_lo = std::max(0, mid - w);
+//                 int win_hi = std::min(n - 1, mid + w);
+
+//                 float base      = x[mid];
+//                 float local_max = x[mid];
+//                 for ( int k = win_lo; k <= win_hi; ++k ) {
+//                     if ( x[k] < base )
+//                         base = x[k];
+//                     if ( x[k] > local_max )
+//                         local_max = x[k];
+//                 }
+
+//                 // depth = how far above the local minimum this peak stands
+//                 float depth = x[mid] - base;
+
+//                 // local_range (for relative thresholding)
+//                 float local_range = local_max - base;
+//                 if ( local_range <= 0.0f )
+//                     local_range = 1.0f; // avoid div-by-zero
+
+//                 // Decide acceptance:
+//                 // If an absolute min_depth is provided (>0) use it.
+//                 // Else if a relative min_depth_rel (>0) is provided, require depth >= min_depth_rel * local_range.
+//                 // Else accept any detected local maximum (no depth filtering).
+//                 bool accept = false;
+//                 if ( min_depth_abs > 0.0f ) {
+//                     accept = (depth >= min_depth_abs);
+//                 }
+//                 else if ( min_depth_rel > 0.0f ) {
+//                     accept = (depth >= min_depth_rel * local_range);
+//                 }
+//                 else {
+//                     accept = true; // no depth requirement
+//                 }
+
+//                 if ( accept ) {
+//                     // Enforce minimum distance: compare using 'depth' metric
+//                     if ( ! midpoints.empty( ) && mid - midpoints.back( ) < min_distance ) {
+//                         // replace the previous peak if this one is stronger (deeper)
+//                         if ( depth > peak_depths.back( ) ) {
+//                             midpoints.back( )   = mid;
+//                             left_edges.back( )  = left;
+//                             right_edges.back( ) = right;
+//                             peak_depths.back( ) = depth;
+//                         }
+//                     }
+//                     else {
+//                         midpoints.push_back(mid);
+//                         left_edges.push_back(left);
+//                         right_edges.push_back(right);
+//                         peak_depths.push_back(depth);
+//                     }
+//                 }
+
+//                 i = j;
+//                 continue;
+//             }
+//         }
+//         ++i;
+//     }
+// }
+// Drop-in replacement for local_maxima_1d in azimuthal_average.cpp
+//
+// KEY CHANGE: "depth" (prominence) is now computed by walking outward from
+// the peak, left and right, until either the array boundary or a taller
+// point is hit -- exactly what scipy.signal.find_peaks does when computing
+// peak_prominences with wlen=None. This replaces the old fixed +/-w sample
+// window, which was far too narrow to capture true topographic prominence
+// on real signals and let noise-level bumps pass the relative-depth filter.
+//
+// min_depth_rel is still interpreted the same way (fraction of a "range"),
+// but that range should now be the GLOBAL signal range, matching scipy's
+// `prominence=frac*global_range` convention -- not a local window range,
+// which was inflating/deflating the threshold unpredictably peak to peak.
+
 static void local_maxima_1d(
         const std::vector<float>& x,
         std::vector<int>&         midpoints,
         std::vector<int>&         left_edges,
         std::vector<int>&         right_edges,
         float                     min_depth_abs, // absolute depth threshold (disabled if <= 0)
-        float                     min_depth_rel, // relative depth (0..1) of local range, used if >0
+        float                     min_depth_rel, // relative depth (0..1) of GLOBAL range, used if >0
         int                       min_distance) // minimal horizontal separation
 {
     midpoints.clear( );
@@ -3512,99 +3578,374 @@ static void local_maxima_1d(
     if ( n < 3 )
         return;
 
-    // global_range used only to scale tiny eps; not for depth decision
     auto [min_it, max_it] = std::minmax_element(x.begin( ), x.end( ));
     float global_range    = *max_it - *min_it;
     if ( global_range <= 0.0f )
         return;
 
-    // window for local statistics (use something related to min_distance)
-    int w = std::max(5, min_distance / 2);
-
-    // small epsilon scaled to signal magnitude to detect plateaus robustly
     const float EPS = 1e-6f * std::max(1.0f, std::abs(*max_it));
 
-    // Store depths for non-maximum suppression comparison
-    std::vector<float> peak_depths;
-    peak_depths.reserve(n / 8);
+    // ------------------------------------------------------------
+    // 1. Find raw local maxima (plateau-aware), same scan as before.
+    // ------------------------------------------------------------
+    struct RawPeak {
+        int left, right, mid;
+    };
+
+    std::vector<RawPeak> raw_peaks;
 
     int i = 1;
     while ( i < n - 1 ) {
-        // detect rising edge into plateau/peak
         if ( x[i] > x[i - 1] + EPS ) {
             int j = i + 1;
-            // handle plateau (equal values within EPS)
             while ( j < n - 1 && std::fabs(x[j] - x[i]) < EPS )
                 ++j;
 
-            // confirm actual peak (next distinct sample is smaller)
             if ( x[j] < x[i] - EPS ) {
                 int left  = i;
                 int right = j - 1;
                 int mid   = (left + right) / 2;
-
-                // compute local base = minimum in window around the peak midpoint
-                int win_lo = std::max(0, mid - w);
-                int win_hi = std::min(n - 1, mid + w);
-
-                float base      = x[mid];
-                float local_max = x[mid];
-                for ( int k = win_lo; k <= win_hi; ++k ) {
-                    if ( x[k] < base )
-                        base = x[k];
-                    if ( x[k] > local_max )
-                        local_max = x[k];
-                }
-
-                // depth = how far above the local minimum this peak stands
-                float depth = x[mid] - base;
-
-                // local_range (for relative thresholding)
-                float local_range = local_max - base;
-                if ( local_range <= 0.0f )
-                    local_range = 1.0f; // avoid div-by-zero
-
-                // Decide acceptance:
-                // If an absolute min_depth is provided (>0) use it.
-                // Else if a relative min_depth_rel (>0) is provided, require depth >= min_depth_rel * local_range.
-                // Else accept any detected local maximum (no depth filtering).
-                bool accept = false;
-                if ( min_depth_abs > 0.0f ) {
-                    accept = (depth >= min_depth_abs);
-                }
-                else if ( min_depth_rel > 0.0f ) {
-                    accept = (depth >= min_depth_rel * local_range);
-                }
-                else {
-                    accept = true; // no depth requirement
-                }
-
-                if ( accept ) {
-                    // Enforce minimum distance: compare using 'depth' metric
-                    if ( ! midpoints.empty( ) && mid - midpoints.back( ) < min_distance ) {
-                        // replace the previous peak if this one is stronger (deeper)
-                        if ( depth > peak_depths.back( ) ) {
-                            midpoints.back( )   = mid;
-                            left_edges.back( )  = left;
-                            right_edges.back( ) = right;
-                            peak_depths.back( ) = depth;
-                        }
-                    }
-                    else {
-                        midpoints.push_back(mid);
-                        left_edges.push_back(left);
-                        right_edges.push_back(right);
-                        peak_depths.push_back(depth);
-                    }
-                }
-
+                raw_peaks.push_back({left, right, mid});
                 i = j;
                 continue;
             }
         }
         ++i;
     }
+
+    // ------------------------------------------------------------
+    // 2. True (unbounded) prominence for each candidate, scipy-style.
+    // ------------------------------------------------------------
+    struct Candidate {
+        int   left, right, mid;
+        float depth; // true prominence
+    };
+
+    std::vector<Candidate> candidates;
+    candidates.reserve(raw_peaks.size( ));
+
+    for ( const auto& p : raw_peaks ) {
+        float peak_val = x[p.mid];
+
+        // Walk left until boundary or a strictly higher sample.
+        float left_min = peak_val;
+        int   j        = p.mid;
+        while ( j >= 0 && x[j] <= peak_val ) {
+            if ( x[j] < left_min )
+                left_min = x[j];
+            --j;
+        }
+
+        // Walk right until boundary or a strictly higher sample.
+        float right_min = peak_val;
+        int   k         = p.mid;
+        while ( k < n && x[k] <= peak_val ) {
+            if ( x[k] < right_min )
+                right_min = x[k];
+            ++k;
+        }
+
+        float base  = std::max(left_min, right_min);
+        float depth = peak_val - base;
+
+        bool accept = false;
+        if ( min_depth_abs > 0.0f ) {
+            accept = (depth >= min_depth_abs);
+        }
+        else if ( min_depth_rel > 0.0f ) {
+            accept = (depth >= min_depth_rel * global_range); // GLOBAL range now
+        }
+        else {
+            accept = true;
+        }
+
+        if ( accept )
+            candidates.push_back({p.left, p.right, p.mid, depth});
+    }
+
+    // ------------------------------------------------------------
+    // 3. Distance-based non-max suppression, scipy-style:
+    //    process candidates tallest/deepest-first, greedily keep,
+    //    and suppress anything within min_distance of a kept peak.
+    //    (The old code only ever compared a candidate to the single
+    //    previously *accepted* peak in left-to-right scan order,
+    //    which can keep a weaker peak just because a stronger
+    //    neighbor further away happened to be processed later.)
+    // ------------------------------------------------------------
+    std::vector<int> order(candidates.size( ));
+    for ( size_t idx = 0; idx < order.size( ); ++idx )
+        order[idx] = (int)idx;
+
+    std::sort(order.begin( ), order.end( ), [&](int a, int b) {
+        return candidates[a].depth > candidates[b].depth;
+    });
+
+    std::vector<bool> suppressed(candidates.size( ), false);
+    for ( int oi : order ) {
+        if ( suppressed[oi] )
+            continue;
+        for ( size_t oj = 0; oj < candidates.size( ); ++oj ) {
+            if ( (int)oj == oi || suppressed[oj] )
+                continue;
+            if ( std::abs(candidates[oi].mid - candidates[(int)oj].mid) < min_distance )
+                suppressed[oj] = true;
+        }
+    }
+
+    for ( size_t idx = 0; idx < candidates.size( ); ++idx ) {
+        if ( ! suppressed[idx] ) {
+            midpoints.push_back(candidates[idx].mid);
+            left_edges.push_back(candidates[idx].left);
+            right_edges.push_back(candidates[idx].right);
+        }
+    }
+
+    // Restore left-to-right order (candidates were built in scan order
+    // already, but suppression can leave gaps -- this keeps callers that
+    // assume sorted midpoints, like FindOuterTubeEdges, happy).
+    std::vector<int> sort_idx(midpoints.size( ));
+    for ( size_t idx = 0; idx < sort_idx.size( ); ++idx )
+        sort_idx[idx] = (int)idx;
+    std::sort(sort_idx.begin( ), sort_idx.end( ), [&](int a, int b) {
+        return midpoints[a] < midpoints[b];
+    });
+
+    std::vector<int> sorted_mid, sorted_left, sorted_right;
+    for ( int idx : sort_idx ) {
+        sorted_mid.push_back(midpoints[idx]);
+        sorted_left.push_back(left_edges[idx]);
+        sorted_right.push_back(right_edges[idx]);
+    }
+    midpoints   = std::move(sorted_mid);
+    left_edges  = std::move(sorted_left);
+    right_edges = std::move(sorted_right);
 }
+
+// std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
+//                                        float                     min_tube_diameter,
+//                                        float                     max_tube_diameter,
+//                                        bool                      invert_contrast) {
+//     int n = static_cast<int>(cols.size( ));
+//     if ( n < 3 )
+//         return {-1, -1};
+
+//     const int   center     = n / 2;
+//     const float MAX_OFFSET = 0.45f * n; // reject far-border edges
+//     //const float CENTER_W   = 0.6f; // center bias weight
+
+//     auto spatially_valid = [&](float mid) {
+//         return std::abs(mid - center) <= MAX_OFFSET;
+//     };
+
+//     // ------------------------------------------------------------
+//     // 1. Preprocessing
+//     // ------------------------------------------------------------
+//     std::vector<float> profile = cols;
+//     if ( invert_contrast ) {
+//         for ( float& v : profile )
+//             v = -v;
+//     }
+
+//     float min_val = *std::min_element(profile.begin( ), profile.end( ));
+//     float max_val = *std::max_element(profile.begin( ), profile.end( ));
+
+//     std::vector<float> norm(n);
+//     for ( int i = 0; i < n; ++i )
+//         norm[i] = profile[i] - min_val;
+
+//     float              max_norm = *std::max_element(norm.begin( ), norm.end( ));
+//     std::vector<float> norm_inv(n);
+//     for ( int i = 0; i < n; ++i )
+//         norm_inv[i] = max_norm - norm[i];
+
+//     // ------------------------------------------------------------
+//     // 2. Peak Detection
+//     // ------------------------------------------------------------
+//     std::vector<int> pos_mids, neg_mids;
+//     std::vector<int> tmp;
+
+//     local_maxima_1d(norm, pos_mids, tmp, tmp, 0.0f, 0.20f, 2); //changed to 2 to fiind more peaks
+//     local_maxima_1d(norm_inv, neg_mids, tmp, tmp, 0.0f, 0.20f, 2); // changed to 2 to find more peaks
+
+//     std::sort(pos_mids.begin( ), pos_mids.end( ));
+//     std::sort(neg_mids.begin( ), neg_mids.end( ));
+
+//     // // ------------------------------------------------------------
+//     // // DEBUG: profile + peaks
+//     // // ------------------------------------------------------------
+//     // std::cout << "\n=== PROFILE DEBUG ===\n";
+//     // for ( int i = 0; i < n; ++i ) {
+//     //     std::cout << i
+//     //               << " norm=" << norm[i]
+//     //               << " inv=" << norm_inv[i];
+
+//     //     if ( std::find(pos_mids.begin( ), pos_mids.end( ), i) != pos_mids.end( ) )
+//     //         std::cout << " <-- POS";
+
+//     //     if ( std::find(neg_mids.begin( ), neg_mids.end( ), i) != neg_mids.end( ) )
+//     //         std::cout << " <-- NEG";
+
+//     //     std::cout << "\n";
+//     // }
+
+//     // ------------------------------------------------------------
+//     // 3. Gradient (for edge localization)
+//     // ------------------------------------------------------------
+//     std::vector<float> grad(n, 0.0f);
+//     for ( int i = 1; i < n - 1; ++i )
+//         grad[i] = 0.5f * (norm[i + 1] - norm[i - 1]);
+//     grad[0]     = grad[1];
+//     grad[n - 1] = grad[n - 2];
+
+//     // ------------------------------------------------------------
+//     // 4. Build Edge Candidates
+//     // ------------------------------------------------------------
+//     std::vector<EdgeCandidate> left_candidates;
+//     std::vector<EdgeCandidate> right_candidates;
+
+//     for ( int pos : pos_mids ) {
+
+//         // ---- LEFT EDGE (NEG -> POS) ----
+//         int   best_neg_left = -1;
+//         float best_contrast = -1.0f;
+
+//         for ( int neg : neg_mids ) {
+//             if ( neg < pos ) {
+//                 float c = std::abs(norm[pos] - norm[neg]);
+//                 if ( c > best_contrast ) {
+//                     best_contrast = c;
+//                     best_neg_left = neg;
+//                 }
+//             }
+//         }
+
+//         if ( best_neg_left != -1 ) {
+//             int   lo     = best_neg_left;
+//             int   hi     = pos;
+//             int   best_k = lo;
+//             float best_g = std::fabs(grad[lo]);
+//             for ( int k = lo; k <= hi; ++k ) {
+//                 float g = std::fabs(grad[k]);
+//                 if ( g > best_g ) {
+//                     best_g = g;
+//                     best_k = k;
+//                 }
+//             }
+//             left_candidates.push_back({best_contrast, (float)best_k});
+//         }
+
+//         // ---- RIGHT EDGE (POS -> NEG) ----
+//         int best_neg_right = -1;
+//         best_contrast      = -1.0f;
+
+//         for ( int neg : neg_mids ) {
+//             if ( neg > pos ) {
+//                 float c = std::abs(norm[pos] - norm[neg]);
+//                 if ( c > best_contrast ) {
+//                     best_contrast  = c;
+//                     best_neg_right = neg;
+//                 }
+//             }
+//         }
+
+//         if ( best_neg_right != -1 ) {
+//             int   lo     = pos;
+//             int   hi     = best_neg_right;
+//             int   best_k = lo;
+//             float best_g = std::fabs(grad[lo]);
+//             for ( int k = lo; k <= hi; ++k ) {
+//                 float g = std::fabs(grad[k]);
+//                 if ( g > best_g ) {
+//                     best_g = g;
+//                     best_k = k;
+//                 }
+//             }
+//             right_candidates.push_back({best_contrast, (float)best_k});
+//         }
+//     }
+
+//     // 5. Find Best Pair using Improved Scoring Function (CENTER-SOFT + GAP-GAUSSIAN)
+
+//     float best_score     = -std::numeric_limits<float>::infinity( );
+//     int   best_left_idx  = -1;
+//     int   best_right_idx = -1;
+
+//     const float IDEAL_GAP = 0.5f * (min_tube_diameter + max_tube_diameter);
+
+//     // ---- TUNABLE PARAMETERS ----
+//     const float SIGMA_GAP = 0.25f * (max_tube_diameter - min_tube_diameter);
+//     // controls how strict the tube diameter must be
+
+//     const float CENTER_W = 0.4f; // soft prior only (do NOT exceed ~0.6)
+
+//     const float IMAGE_CENTER = 0.5f * (n - 1);
+
+//     //std::cout << "\n=== FINAL SCORING ===\n";
+
+//     for ( const auto& l : left_candidates ) {
+//         for ( const auto& r : right_candidates ) {
+
+//             float gap = r.midpoint - l.midpoint;
+//             if ( gap <= 0.0f )
+//                 continue;
+
+//             // Hard rejection outside reasonable physical bounds
+//             if ( gap < min_tube_diameter || gap > max_tube_diameter )
+//                 continue;
+
+//             // ----------------------------------------------------
+//             // 1) Edge strength term
+//             // ----------------------------------------------------
+//             float contrast = l.diff + r.diff;
+
+//             // ----------------------------------------------------
+//             // 2) Gaussian gap likelihood (KEY FIX)
+//             // ----------------------------------------------------
+//             float gap_err   = gap - IDEAL_GAP;
+//             float gap_score = -(gap_err * gap_err) / (2.0f * SIGMA_GAP * SIGMA_GAP);
+
+//             // ----------------------------------------------------
+//             // 3) Soft center prior (does NOT dominate)
+//             // ----------------------------------------------------
+//             float mid_center     = 0.5f * (l.midpoint + r.midpoint);
+//             float center_dist    = std::abs(mid_center - IMAGE_CENTER);
+//             float center_penalty = CENTER_W * std::pow(center_dist, 1.5); //std:sqrt
+
+//             // ----------------------------------------------------
+//             // Final score
+//             // ----------------------------------------------------
+//             float score = contrast + (gap_score * 2) - center_penalty; //increasing the gap score penalty
+
+//             // std::cout
+//             //         << "L=" << (int)std::round(l.midpoint)
+//             //         << " R=" << (int)std::round(r.midpoint)
+//             //         << " gap=" << gap
+//             //         << " contrast=" << contrast
+//             //         << " gap_score=" << gap_score
+//             //         << " center_dist=" << center_dist
+//             //         << " score=" << score
+//             //         << "\n";
+
+//             if ( score > best_score ) {
+//                 best_score     = score;
+//                 best_left_idx  = (int)std::round(l.midpoint);
+//                 best_right_idx = (int)std::round(r.midpoint);
+//             }
+//         }
+//     }
+
+//     // std::cout << "\n>>> CHOSEN: L=" << best_left_idx
+//     //           << " R=" << best_right_idx
+//     //           << " score=" << best_score << "\n";
+//     //wxPrintf("\nCHOSEN: L= %i, R=%i, score=%f\n", best_left_idx, best_right_idx, best_score);
+
+//     return {best_left_idx, best_right_idx};
+// }
+
+// Refactor of FindOuterTubeEdges: same public signature, same scoring
+// function. Internally now tries a "tube is centered" pass first; if it
+// finds no valid pair, it retries with that assumption dropped, searching
+// the whole profile. Both passes share the exact same scoring code.
 
 std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
                                        float                     min_tube_diameter,
@@ -3614,16 +3955,10 @@ std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
     if ( n < 3 )
         return {-1, -1};
 
-    const int   center     = n / 2;
-    const float MAX_OFFSET = 0.45f * n; // reject far-border edges
-    //const float CENTER_W   = 0.6f; // center bias weight
-
-    auto spatially_valid = [&](float mid) {
-        return std::abs(mid - center) <= MAX_OFFSET;
-    };
+    const int center = n / 2;
 
     // ------------------------------------------------------------
-    // 1. Preprocessing
+    // 1. Preprocessing (unchanged)
     // ------------------------------------------------------------
     std::vector<float> profile = cols;
     if ( invert_contrast ) {
@@ -3632,7 +3967,6 @@ std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
     }
 
     float min_val = *std::min_element(profile.begin( ), profile.end( ));
-    float max_val = *std::max_element(profile.begin( ), profile.end( ));
 
     std::vector<float> norm(n);
     for ( int i = 0; i < n; ++i )
@@ -3644,37 +3978,19 @@ std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
         norm_inv[i] = max_norm - norm[i];
 
     // ------------------------------------------------------------
-    // 2. Peak Detection
+    // 2. Peak Detection (unchanged)
     // ------------------------------------------------------------
     std::vector<int> pos_mids, neg_mids;
     std::vector<int> tmp;
 
-    local_maxima_1d(norm, pos_mids, tmp, tmp, 0.0f, 0.20f, 10);
-    local_maxima_1d(norm_inv, neg_mids, tmp, tmp, 0.0f, 0.20f, 10);
+    local_maxima_1d(norm, pos_mids, tmp, tmp, 0.0f, 0.20f, 2); //changed to 2 to find more peaks
+    local_maxima_1d(norm_inv, neg_mids, tmp, tmp, 0.0f, 0.20f, 2); //changed to 2 to find more peaks
 
     std::sort(pos_mids.begin( ), pos_mids.end( ));
     std::sort(neg_mids.begin( ), neg_mids.end( ));
 
-    // // ------------------------------------------------------------
-    // // DEBUG: profile + peaks
-    // // ------------------------------------------------------------
-    // std::cout << "\n=== PROFILE DEBUG ===\n";
-    // for ( int i = 0; i < n; ++i ) {
-    //     std::cout << i
-    //               << " norm=" << norm[i]
-    //               << " inv=" << norm_inv[i];
-
-    //     if ( std::find(pos_mids.begin( ), pos_mids.end( ), i) != pos_mids.end( ) )
-    //         std::cout << " <-- POS";
-
-    //     if ( std::find(neg_mids.begin( ), neg_mids.end( ), i) != neg_mids.end( ) )
-    //         std::cout << " <-- NEG";
-
-    //     std::cout << "\n";
-    // }
-
     // ------------------------------------------------------------
-    // 3. Gradient (for edge localization)
+    // 3. Gradient (unchanged)
     // ------------------------------------------------------------
     std::vector<float> grad(n, 0.0f);
     for ( int i = 1; i < n - 1; ++i )
@@ -3683,148 +3999,140 @@ std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
     grad[n - 1] = grad[n - 2];
 
     // ------------------------------------------------------------
-    // 4. Build Edge Candidates
+    // 4+5. Candidate building + scoring, parameterized by whether we
+    // assume the tube is centered. This is the only new piece of logic;
+    // everything inside (contrast calc, gradient localization, the
+    // gap-Gaussian/center-penalty scoring) is copied verbatim from the
+    // existing function -- nothing about the scoring changes.
     // ------------------------------------------------------------
-    std::vector<EdgeCandidate> left_candidates;
-    std::vector<EdgeCandidate> right_candidates;
+    auto run_search = [&](bool assume_centered) -> std::pair<int, int> {
+        std::vector<EdgeCandidate> left_candidates;
+        std::vector<EdgeCandidate> right_candidates;
 
-    for ( int pos : pos_mids ) {
+        for ( int pos : pos_mids ) {
+            bool eligible_for_left  = (! assume_centered) || (pos < center);
+            bool eligible_for_right = (! assume_centered) || (pos > center);
 
-        // ---- LEFT EDGE (NEG -> POS) ----
-        int   best_neg_left = -1;
-        float best_contrast = -1.0f;
+            // ---- LEFT EDGE (NEG -> POS) ----
+            if ( eligible_for_left ) {
+                int   best_neg_left = -1;
+                float best_contrast = -1.0f;
+                for ( int neg : neg_mids ) {
+                    if ( neg < pos ) {
+                        float c = std::abs(norm[pos] - norm[neg]);
+                        if ( c > best_contrast ) {
+                            best_contrast = c;
+                            best_neg_left = neg;
+                        }
+                    }
+                }
+                if ( best_neg_left != -1 ) {
+                    int   lo     = best_neg_left;
+                    int   hi     = pos;
+                    int   best_k = lo;
+                    float best_g = std::fabs(grad[lo]);
+                    for ( int k = lo; k <= hi; ++k ) {
+                        float g = std::fabs(grad[k]);
+                        if ( g > best_g ) {
+                            best_g = g;
+                            best_k = k;
+                        }
+                    }
+                    left_candidates.push_back({best_contrast, (float)best_k});
+                }
+            }
 
-        for ( int neg : neg_mids ) {
-            if ( neg < pos ) {
-                float c = std::abs(norm[pos] - norm[neg]);
-                if ( c > best_contrast ) {
-                    best_contrast = c;
-                    best_neg_left = neg;
+            // ---- RIGHT EDGE (POS -> NEG) ----
+            if ( eligible_for_right ) {
+                int   best_neg_right = -1;
+                float best_contrast  = -1.0f;
+                for ( int neg : neg_mids ) {
+                    if ( neg > pos ) {
+                        float c = std::abs(norm[pos] - norm[neg]);
+                        if ( c > best_contrast ) {
+                            best_contrast  = c;
+                            best_neg_right = neg;
+                        }
+                    }
+                }
+                if ( best_neg_right != -1 ) {
+                    int   lo     = pos;
+                    int   hi     = best_neg_right;
+                    int   best_k = lo;
+                    float best_g = std::fabs(grad[lo]);
+                    for ( int k = lo; k <= hi; ++k ) {
+                        float g = std::fabs(grad[k]);
+                        if ( g > best_g ) {
+                            best_g = g;
+                            best_k = k;
+                        }
+                    }
+                    right_candidates.push_back({best_contrast, (float)best_k});
                 }
             }
         }
 
-        if ( best_neg_left != -1 ) {
-            int   lo     = best_neg_left;
-            int   hi     = pos;
-            int   best_k = lo;
-            float best_g = std::fabs(grad[lo]);
-            for ( int k = lo; k <= hi; ++k ) {
-                float g = std::fabs(grad[k]);
-                if ( g > best_g ) {
-                    best_g = g;
-                    best_k = k;
+        // ---- Scoring (identical in both passes -- unchanged from your original) ----
+        float best_score     = -std::numeric_limits<float>::infinity( );
+        int   best_left_idx  = -1;
+        int   best_right_idx = -1;
+
+        const float IDEAL_GAP    = 0.5f * (min_tube_diameter + max_tube_diameter);
+        const float SIGMA_GAP    = 0.25f * (max_tube_diameter - min_tube_diameter);
+        const float CENTER_W     = 0.4f;
+        const float IMAGE_CENTER = 0.5f * (n - 1);
+
+        for ( const auto& l : left_candidates ) {
+            for ( const auto& r : right_candidates ) {
+                float gap = r.midpoint - l.midpoint;
+                if ( gap <= 0.0f )
+                    continue;
+                if ( gap < min_tube_diameter || gap > max_tube_diameter )
+                    continue;
+
+                float contrast = l.diff + r.diff;
+
+                float gap_err   = gap - IDEAL_GAP;
+                float gap_score = -(gap_err * gap_err) / (2.0f * SIGMA_GAP * SIGMA_GAP);
+
+                float mid_center     = 0.5f * (l.midpoint + r.midpoint);
+                float center_dist    = std::abs(mid_center - IMAGE_CENTER);
+                float center_penalty = CENTER_W * std::pow(center_dist, 1.5f);
+
+                float score = contrast + (gap_score * 2.0f) - center_penalty;
+
+                if ( score > best_score ) {
+                    best_score     = score;
+                    best_left_idx  = (int)std::round(l.midpoint);
+                    best_right_idx = (int)std::round(r.midpoint);
                 }
             }
-            left_candidates.push_back({best_contrast, (float)best_k});
         }
 
-        // ---- RIGHT EDGE (POS -> NEG) ----
-        int best_neg_right = -1;
-        best_contrast      = -1.0f;
+        return {best_left_idx, best_right_idx};
+    };
 
-        for ( int neg : neg_mids ) {
-            if ( neg > pos ) {
-                float c = std::abs(norm[pos] - norm[neg]);
-                if ( c > best_contrast ) {
-                    best_contrast  = c;
-                    best_neg_right = neg;
-                }
-            }
-        }
+    // ------------------------------------------------------------
+    // Pass 1: assume the tube is centered.
+    // Pass 2 (only if pass 1 found nothing): drop that assumption and
+    // search the full profile. Same candidate/scoring code either way.
+    // Pass 3 (only if pass 2 also found nothing): no valid tube edges
+    // exist anywhere in this profile under the given min/max diameter
+    // constraints -- return the explicit "whole image" sentinel {1, n}
+    // rather than {-1, -1}, so downstream code has one clear, always-
+    // in-bounds failure value to check for instead of a negative index.
+    // ------------------------------------------------------------
+    std::pair<int, int> result = run_search(/*assume_centered=*/true);
 
-        if ( best_neg_right != -1 ) {
-            int   lo     = pos;
-            int   hi     = best_neg_right;
-            int   best_k = lo;
-            float best_g = std::fabs(grad[lo]);
-            for ( int k = lo; k <= hi; ++k ) {
-                float g = std::fabs(grad[k]);
-                if ( g > best_g ) {
-                    best_g = g;
-                    best_k = k;
-                }
-            }
-            right_candidates.push_back({best_contrast, (float)best_k});
-        }
+    if ( result.first == -1 || result.second == -1 ) {
+        result = run_search(/*assume_centered=*/false);
     }
 
-    // 5. Find Best Pair using Improved Scoring Function (CENTER-SOFT + GAP-GAUSSIAN)
-
-    float best_score     = -std::numeric_limits<float>::infinity( );
-    int   best_left_idx  = -1;
-    int   best_right_idx = -1;
-
-    const float IDEAL_GAP = 0.5f * (min_tube_diameter + max_tube_diameter);
-
-    // ---- TUNABLE PARAMETERS ----
-    const float SIGMA_GAP = 0.25f * (max_tube_diameter - min_tube_diameter);
-    // controls how strict the tube diameter must be
-
-    const float CENTER_W = 0.4f; // soft prior only (do NOT exceed ~0.6)
-
-    const float IMAGE_CENTER = 0.5f * (n - 1);
-
-    //std::cout << "\n=== FINAL SCORING ===\n";
-
-    for ( const auto& l : left_candidates ) {
-        for ( const auto& r : right_candidates ) {
-
-            float gap = r.midpoint - l.midpoint;
-            if ( gap <= 0.0f )
-                continue;
-
-            // Hard rejection outside reasonable physical bounds
-            if ( gap < min_tube_diameter || gap > max_tube_diameter )
-                continue;
-
-            // ----------------------------------------------------
-            // 1) Edge strength term
-            // ----------------------------------------------------
-            float contrast = l.diff + r.diff;
-
-            // ----------------------------------------------------
-            // 2) Gaussian gap likelihood (KEY FIX)
-            // ----------------------------------------------------
-            float gap_err   = gap - IDEAL_GAP;
-            float gap_score = -(gap_err * gap_err) / (2.0f * SIGMA_GAP * SIGMA_GAP);
-
-            // ----------------------------------------------------
-            // 3) Soft center prior (does NOT dominate)
-            // ----------------------------------------------------
-            float mid_center     = 0.5f * (l.midpoint + r.midpoint);
-            float center_dist    = std::abs(mid_center - IMAGE_CENTER);
-            float center_penalty = CENTER_W * std::pow(center_dist, 1.5); //std:sqrt
-
-            // ----------------------------------------------------
-            // Final score
-            // ----------------------------------------------------
-            float score = contrast + (gap_score * 2) - center_penalty; //increasing the gap score penalty
-
-            // std::cout
-            //         << "L=" << (int)std::round(l.midpoint)
-            //         << " R=" << (int)std::round(r.midpoint)
-            //         << " gap=" << gap
-            //         << " contrast=" << contrast
-            //         << " gap_score=" << gap_score
-            //         << " center_dist=" << center_dist
-            //         << " score=" << score
-            //         << "\n";
-
-            if ( score > best_score ) {
-                best_score     = score;
-                best_left_idx  = (int)std::round(l.midpoint);
-                best_right_idx = (int)std::round(r.midpoint);
-            }
-        }
+    if ( result.first == -1 || result.second == -1 ) {
+        result = {1, n}; // sentinel: no peaks detected at all -- caller should treat this as "invalid"
     }
 
-    // std::cout << "\n>>> CHOSEN: L=" << best_left_idx
-    //           << " R=" << best_right_idx
-    //           << " score=" << best_score << "\n";
-    //wxPrintf("\nCHOSEN: L= %i, R=%i, score=%f\n", best_left_idx, best_right_idx, best_score);
-
-    return {best_left_idx, best_right_idx};
+    return result;
 }
 
 // Standalone function to compute cylindrical average (Side View -> Top View)
