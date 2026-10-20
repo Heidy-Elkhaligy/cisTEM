@@ -117,15 +117,157 @@ float GetPixelSizeOrDefault(MRCFile& file) {
     return pixel_size;
 }
 
+// // Robust plateau-aware local maxima finder with depth filtering (no prominence)
+// static void local_maxima_1d(
+//         const std::vector<float>& x,
+//         std::vector<int>&         midpoints,
+//         std::vector<int>&         left_edges,
+//         std::vector<int>&         right_edges,
+//         float                     min_depth_abs = 0.0f, // absolute depth threshold (disabled if <= 0)
+//         float                     min_depth_rel = 0.0f, // relative depth (0..1) of local range, used if >0
+//         int                       min_distance  = 10) // minimal horizontal separation
+// {
+//     midpoints.clear( );
+//     left_edges.clear( );
+//     right_edges.clear( );
+
+//     const int n = (int)x.size( );
+//     if ( n < 3 )
+//         return;
+
+//     // global_range used only to scale tiny eps; not for depth decision
+//     auto [min_it, max_it] = std::minmax_element(x.begin( ), x.end( ));
+//     float global_range    = *max_it - *min_it;
+//     if ( global_range <= 0.0f )
+//         return;
+
+//     // window for local statistics (use something related to min_distance)
+//     int w = std::max(5, min_distance / 2);
+
+//     // small epsilon scaled to signal magnitude to detect plateaus robustly
+//     const float EPS = 1e-6f * std::max(1.0f, std::abs(*max_it));
+
+//     // Store depths for non-maximum suppression comparison
+//     std::vector<float> peak_depths;
+//     peak_depths.reserve(n / 8);
+
+//     int i = 1;
+//     while ( i < n - 1 ) {
+//         // detect rising edge into plateau/peak
+//         if ( x[i] > x[i - 1] + EPS ) {
+//             int j = i + 1;
+//             // handle plateau (equal values within EPS)
+//             while ( j < n - 1 && std::fabs(x[j] - x[i]) < EPS )
+//                 ++j;
+
+//             // confirm actual peak (next distinct sample is smaller)
+//             if ( x[j] < x[i] - EPS ) {
+//                 int left  = i;
+//                 int right = j - 1;
+//                 int mid   = (left + right) / 2;
+
+//                 // compute local base = minimum in window around the peak midpoint
+//                 int win_lo = std::max(0, mid - w);
+//                 int win_hi = std::min(n - 1, mid + w);
+
+//                 float base      = x[mid];
+//                 float local_max = x[mid];
+//                 for ( int k = win_lo; k <= win_hi; ++k ) {
+//                     if ( x[k] < base )
+//                         base = x[k];
+//                     if ( x[k] > local_max )
+//                         local_max = x[k];
+//                 }
+
+//                 // depth = how far above the local minimum this peak stands
+//                 float depth = x[mid] - base;
+
+//                 // local_range (for relative thresholding)
+//                 float local_range = local_max - base;
+//                 if ( local_range <= 0.0f )
+//                     local_range = 1.0f; // avoid div-by-zero
+
+//                 // Decide acceptance:
+//                 // If an absolute min_depth is provided (>0) use it.
+//                 // Else if a relative min_depth_rel (>0) is provided, require depth >= min_depth_rel * local_range.
+//                 // Else accept any detected local maximum (no depth filtering).
+//                 bool accept = false;
+//                 if ( min_depth_abs > 0.0f ) {
+//                     accept = (depth >= min_depth_abs);
+//                 }
+//                 else if ( min_depth_rel > 0.0f ) {
+//                     accept = (depth >= min_depth_rel * local_range);
+//                 }
+//                 else {
+//                     accept = true; // no depth requirement
+//                 }
+
+//                 if ( accept ) {
+//                     // Enforce minimum distance: compare using 'depth' metric
+//                     if ( ! midpoints.empty( ) && mid - midpoints.back( ) < min_distance ) {
+//                         // replace the previous peak if this one is stronger (deeper)
+//                         if ( depth > peak_depths.back( ) ) {
+//                             midpoints.back( )   = mid;
+//                             left_edges.back( )  = left;
+//                             right_edges.back( ) = right;
+//                             peak_depths.back( ) = depth;
+//                         }
+//                     }
+//                     else {
+//                         midpoints.push_back(mid);
+//                         left_edges.push_back(left);
+//                         right_edges.push_back(right);
+//                         peak_depths.push_back(depth);
+//                     }
+//                 }
+
+//                 i = j;
+//                 continue;
+//             }
+//         }
+//         ++i;
+//     }
+// }
+static float RefinePeakSubpixel(
+        const std::vector<float>& grad,
+        int                       best_k);
+
+static float RefinePeakSubpixel(
+        const std::vector<float>& grad,
+        int                       best_k) {
+    // Cannot interpolate at the boundaries.
+    if ( best_k <= 0 || best_k >= static_cast<int>(grad.size( )) - 1 )
+        return static_cast<float>(best_k);
+
+    // Use absolute gradient because either gradient direction
+    // can represent an edge.
+    const float y_left   = std::fabs(grad[best_k - 1]);
+    const float y_center = std::fabs(grad[best_k]);
+    const float y_right  = std::fabs(grad[best_k + 1]);
+
+    const float denom = y_left - 2.0f * y_center + y_right;
+
+    // Avoid unstable interpolation for a flat or degenerate peak.
+    if ( std::fabs(denom) < 1e-6f )
+        return static_cast<float>(best_k);
+
+    float delta = 0.5f * (y_left - y_right) / denom;
+
+    // Keep the refined position within the neighboring samples.
+    delta = std::max(-1.0f, std::min(1.0f, delta));
+
+    return static_cast<float>(best_k) + delta;
+}
+
 // Robust plateau-aware local maxima finder with depth filtering (no prominence)
 static void local_maxima_1d(
         const std::vector<float>& x,
         std::vector<int>&         midpoints,
         std::vector<int>&         left_edges,
         std::vector<int>&         right_edges,
-        float                     min_depth_abs = 0.0f, // absolute depth threshold (disabled if <= 0)
-        float                     min_depth_rel = 0.0f, // relative depth (0..1) of local range, used if >0
-        int                       min_distance  = 10) // minimal horizontal separation
+        float                     min_depth_abs, // = 0.0f, // absolute depth threshold (disabled if <= 0)
+        float                     min_depth_rel, //= 0.0f, // relative depth (0..1) of local range, used if >0
+        int                       min_distance) // = 10 minimal horizontal separation
 {
     midpoints.clear( );
     left_edges.clear( );
@@ -1065,17 +1207,17 @@ class FindTubeMainFrame : public wxFrame {
         float midpoint; // Pixel (or subpixel) location
     };
 
-    std::pair<int, int> FindOuterTubeEdges(const std::vector<float>& cols,
-                                           float                     min_tube_diameter,
-                                           float                     max_tube_diameter,
-                                           bool                      invert_contrast) {
+    std::pair<float, float> FindOuterTubeEdges(const std::vector<float>& cols,
+                                               float                     min_tube_diameter,
+                                               float                     max_tube_diameter,
+                                               bool                      invert_contrast) {
         int n = static_cast<int>(cols.size( ));
         if ( n < 3 )
-            return {-1, -1};
+            return {-1.0f, -1.0f};
 
         const int   center     = n / 2;
         const float MAX_OFFSET = 0.45f * n; // reject far-border edges
-        //const float CENTER_W   = 0.6f; // center bias weight
+        const float CENTER_W   = 0.6f; // center bias weight
 
         auto spatially_valid = [&](float mid) {
             return std::abs(mid - center) <= MAX_OFFSET;
@@ -1113,24 +1255,6 @@ class FindTubeMainFrame : public wxFrame {
 
         std::sort(pos_mids.begin( ), pos_mids.end( ));
         std::sort(neg_mids.begin( ), neg_mids.end( ));
-
-        // ------------------------------------------------------------
-        // DEBUG: profile + peaks
-        // ------------------------------------------------------------
-        std::cout << "\n=== PROFILE DEBUG ===\n";
-        for ( int i = 0; i < n; ++i ) {
-            std::cout << i
-                      << " norm=" << norm[i]
-                      << " inv=" << norm_inv[i];
-
-            if ( std::find(pos_mids.begin( ), pos_mids.end( ), i) != pos_mids.end( ) )
-                std::cout << " <-- POS";
-
-            if ( std::find(neg_mids.begin( ), neg_mids.end( ), i) != neg_mids.end( ) )
-                std::cout << " <-- NEG";
-
-            std::cout << "\n";
-        }
 
         // ------------------------------------------------------------
         // 3. Gradient (for edge localization)
@@ -1175,7 +1299,9 @@ class FindTubeMainFrame : public wxFrame {
                         best_k = k;
                     }
                 }
-                left_candidates.push_back({best_contrast, (float)best_k});
+                // left_candidates.push_back({best_contrast, (float)best_k});
+                float refined_k = RefinePeakSubpixel(grad, best_k);
+                left_candidates.push_back({best_contrast, refined_k});
             }
 
             // ---- RIGHT EDGE (POS -> NEG) ----
@@ -1204,7 +1330,9 @@ class FindTubeMainFrame : public wxFrame {
                         best_k = k;
                     }
                 }
-                right_candidates.push_back({best_contrast, (float)best_k});
+                // right_candidates.push_back({best_contrast, (float)best_k});
+                float refined_k = RefinePeakSubpixel(grad, best_k);
+                right_candidates.push_back({best_contrast, refined_k});
             }
         }
 
@@ -1215,7 +1343,7 @@ class FindTubeMainFrame : public wxFrame {
         // float best_center_score = -1e30f;
         // int   best_l = -1, best_r = -1;
 
-        // std::cout << "\n=== CENTER-FIRST SCORING ===\n";
+        // wxPrintf("\n=== CENTER-FIRST SCORING ===\n");
 
         // for ( const auto& l : left_candidates ) {
         //     if ( ! spatially_valid(l.midpoint) || l.midpoint >= center )
@@ -1236,12 +1364,13 @@ class FindTubeMainFrame : public wxFrame {
         //         float score =
         //                 (l.diff + r.diff) - CENTER_W * center_dist;
 
-        //         std::cout << "L=" << l.midpoint
-        //                   << " R=" << r.midpoint
-        //                   << " gap=" << gap
-        //                   << " contrast=" << (l.diff + r.diff)
-        //                   << " center_dist=" << center_dist
-        //                   << " score=" << score << "\n";
+        // wxPrintf("L=%.3f R=%.3f gap=%.3f contrast=%.3f center_dist=%.3f score=%.3f\n",
+        //          l.midpoint,
+        //          r.midpoint,
+        //          gap,
+        //          (l.diff + r.diff),
+        //          center_dist,
+        //          score);
 
         //         if ( score > best_center_score ) {
         //             best_center_score = score;
@@ -1251,10 +1380,9 @@ class FindTubeMainFrame : public wxFrame {
         //         }
         //     }
         // }
-        //
+
         // if ( found_center ) {
-        //     std::cout << "\n>>> CENTER-FIRST CHOSEN: "
-        //               << best_l << ", " << best_r << "\n";
+        // wxPrintf("\n>>> CENTER-FIRST CHOSEN: %d, %d\n", best_l, best_r);
         //     return {best_l, best_r};
         // }
 
@@ -1264,7 +1392,7 @@ class FindTubeMainFrame : public wxFrame {
         // float best_score = -1e30f;
         // int   best_left = -1, best_right = -1;
 
-        // std::cout << "\n=== FALLBACK GLOBAL SCORING ===\n";
+        // wxPrintf("\n=== FALLBACK GLOBAL SCORING ===\n");
 
         // for ( const auto& l : left_candidates ) {
         //     for ( const auto& r : right_candidates ) {
@@ -1274,10 +1402,11 @@ class FindTubeMainFrame : public wxFrame {
 
         //         float score = (l.diff + r.diff) - 0.1f * std::fabs(gap - min_tube_diameter);
 
-        //         std::cout << "L=" << l.midpoint
-        //                   << " R=" << r.midpoint
-        //                   << " gap=" << gap
-        //                   << " score=" << score << "\n";
+        // wxPrintf("L=%.3f R=%.3f gap=%.3f score=%.3f\n",
+        //          l.midpoint,
+        //          r.midpoint,
+        //          gap,
+        //          score);
 
         //         if ( score > best_score ) {
         //             best_score = score;
@@ -1290,16 +1419,15 @@ class FindTubeMainFrame : public wxFrame {
         // if ( best_left < 0 || best_right < 0 )
         //     return {-1, -1};
 
-        // std::cout << "\n>>> FALLBACK CHOSEN: "
-        //           << best_left << ", " << best_right << "\n";
+        // wxPrintf("\n>>> FALLBACK CHOSEN: %d, %d\n", best_left, best_right);
 
         // return {best_left, best_right};
 
         // 5. Find Best Pair using Improved Scoring Function (CENTER-SOFT + GAP-GAUSSIAN)
 
         float best_score     = -std::numeric_limits<float>::infinity( );
-        int   best_left_idx  = -1;
-        int   best_right_idx = -1;
+        float best_left_idx  = -1.0f;
+        float best_right_idx = -1.0f;
 
         const float IDEAL_GAP = 0.5f * (min_tube_diameter + max_tube_diameter);
 
@@ -1307,11 +1435,11 @@ class FindTubeMainFrame : public wxFrame {
         const float SIGMA_GAP = 0.25f * (max_tube_diameter - min_tube_diameter);
         // controls how strict the tube diameter must be
 
-        const float CENTER_W = 0.4f; // soft prior only (do NOT exceed ~0.6)
+        //    const float CENTER_W = 0.4f; // soft prior only (do NOT exceed ~0.6)
 
         const float IMAGE_CENTER = 0.5f * (n - 1);
 
-        std::cout << "\n=== FINAL SCORING ===\n";
+        wxPrintf("\n=== FINAL SCORING ===\n");
 
         for ( const auto& l : left_candidates ) {
             for ( const auto& r : right_candidates ) {
@@ -1347,29 +1475,130 @@ class FindTubeMainFrame : public wxFrame {
                 // ----------------------------------------------------
                 float score = contrast + (gap_score * 2) - center_penalty; //increasing the gap score penalty
 
-                std::cout
-                        << "L=" << (int)std::round(l.midpoint)
-                        << " R=" << (int)std::round(r.midpoint)
-                        << " gap=" << gap
-                        << " contrast=" << contrast
-                        << " gap_score=" << gap_score
-                        << " center_dist=" << center_dist
-                        << " score=" << score
-                        << "\n";
+                wxPrintf("L=%f R=%f gap=%.3f contrast=%.3f gap_score=%.3f center_dist=%.3f score=%.3f\n",
+                         l.midpoint,
+                         r.midpoint,
+                         gap,
+                         contrast,
+                         gap_score,
+                         center_dist,
+                         score);
 
                 if ( score > best_score ) {
                     best_score     = score;
-                    best_left_idx  = (int)std::round(l.midpoint);
-                    best_right_idx = (int)std::round(r.midpoint);
+                    best_left_idx  = l.midpoint;
+                    best_right_idx = r.midpoint;
                 }
             }
         }
 
-        std::cout << "\n>>> CHOSEN: L=" << best_left_idx
-                  << " R=" << best_right_idx
-                  << " score=" << best_score << "\n";
+        // wxPrintf("\n>>> CHOSEN: L=%f R=%f score=%.3f\n",
+        //          best_left_idx,
+        //          best_right_idx,
+        //          best_score);
 
-        return {best_left_idx, best_right_idx};
+        // return {best_left_idx, best_right_idx};
+
+        // ------------------------------------------------------------
+        // 6. Return the best pair within the diameter bounds
+        // ------------------------------------------------------------
+
+        if ( best_left_idx >= 0 && best_right_idx >= 0 ) {
+
+            wxPrintf("\n>>> CHOSEN (WITH BOUNDS): L=%f R=%f diameter=%f score=%.3f\n",
+                     best_left_idx,
+                     best_right_idx,
+                     (best_right_idx - best_left_idx),
+                     best_score);
+
+            return {best_left_idx, best_right_idx};
+        }
+
+        // ------------------------------------------------------------
+        // 7. FALLBACK: Search without enforcing diameter bounds
+        // ------------------------------------------------------------
+
+        wxPrintf("\nNo valid pair found within diameter bounds [%.3f, %.3f]. Trying fallback...\n",
+                 min_tube_diameter,
+                 max_tube_diameter);
+
+        float fallback_score = -std::numeric_limits<float>::infinity( );
+
+        float fallback_left_idx  = -1.0f;
+        float fallback_right_idx = -1.0f;
+
+        for ( const auto& l : left_candidates ) {
+
+            for ( const auto& r : right_candidates ) {
+
+                float gap = r.midpoint - l.midpoint;
+
+                // Reject only invalid edge ordering.
+                // Do NOT enforce min_tube_diameter or max_tube_diameter.
+                if ( gap <= 0.0f )
+                    continue;
+
+                // 1. Edge strength
+                float contrast = l.diff + r.diff;
+
+                // 2. Soft preference for the ideal diameter
+                float gap_err = gap - IDEAL_GAP;
+
+                float gap_score =
+                        -(gap_err * gap_err) /
+                        (2.0f * SIGMA_GAP * SIGMA_GAP);
+
+                // 3. Soft preference for the image center
+                float mid_center =
+                        0.5f * (l.midpoint + r.midpoint);
+
+                float center_dist =
+                        std::abs(mid_center - IMAGE_CENTER);
+
+                float center_penalty =
+                        CENTER_W * std::pow(center_dist, 1.5f);
+
+                // 4. Final fallback score
+                float score =
+                        contrast + (gap_score * 2.0f) - center_penalty;
+
+                wxPrintf("FALLBACK: L=%f R=%f gap=%.3f contrast=%.3f gap_score=%.3f center_dist=%.3f score=%.3f\n",
+                         l.midpoint,
+                         r.midpoint,
+                         gap,
+                         contrast,
+                         gap_score,
+                         center_dist,
+                         score);
+
+                if ( score > fallback_score ) {
+
+                    fallback_score = score;
+
+                    fallback_left_idx = l.midpoint;
+
+                    fallback_right_idx = r.midpoint;
+                }
+            }
+        }
+
+        // ------------------------------------------------------------
+        // 8. Return fallback result
+        // ------------------------------------------------------------
+
+        if ( fallback_left_idx < 0 || fallback_right_idx < 0 ) {
+
+            wxPrintf("\n>>> FALLBACK FAILED: No usable edge pair\n");
+            return {-1.0f, -1.0f};
+        }
+
+        wxPrintf("\n>>> FALLBACK CHOSEN: L=%f R=%f diameter=%f score=%.3f\n",
+                 fallback_left_idx,
+                 fallback_right_idx,
+                 (fallback_right_idx - fallback_left_idx),
+                 fallback_score);
+
+        return {fallback_left_idx, fallback_right_idx};
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////
