@@ -1022,7 +1022,20 @@ void AbInitioManager::BeginRefinementCycle( ) {
 			*/
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].phi = global_random_number_generator.GetUniformRandom( ) * 180.0;
             // input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = rad_2_deg(acosf(2.0f * fabsf(global_random_number_generator.GetUniformRandom( )) - 1.0f));
-            input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = theta_start_local + (fabsf(global_random_number_generator.GetUniformRandom( )) * (theta_max_local - theta_start_local));
+            if ( counter < 15637 ) {
+                theta_start_local = 70.0f;
+                theta_max_local   = 110.0f;
+
+                input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = theta_start_local + (fabsf(global_random_number_generator.GetUniformRandom( )) * (theta_max_local - theta_start_local));
+            }
+            else {
+                theta_start_local = 20.0f;
+                theta_max_local   = 60.0f;
+
+                input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = theta_start_local + (fabsf(global_random_number_generator.GetUniformRandom( )) * (theta_max_local - theta_start_local));
+            }
+
+            // input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].theta = theta_start_local + (fabsf(global_random_number_generator.GetUniformRandom( )) * (theta_max_local - theta_start_local));
             // input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].psi   = global_random_number_generator.GetUniformRandom( ) * 180.0;
             input_refinement->class_refinement_results[class_counter].particle_refinement_results[counter].psi = dist(gen) ? 270 : 90;
 
@@ -1103,10 +1116,10 @@ void AbInitioManager::BeginRefinementCycle( ) {
 
     // empty scratch
     // I commented those lines so that the azimuthal average of RASTR is not deleted after it is being copied over.
-    // if ( wxDir::Exists(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/") == true )
-    //     wxFileName::Rmdir(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup", wxPATH_RMDIR_RECURSIVE);
-    // if ( wxDir::Exists(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/") == false )
-    //     wxFileName::Mkdir(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup");
+    if ( wxDir::Exists(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/") == true )
+        wxFileName::Rmdir(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup", wxPATH_RMDIR_RECURSIVE);
+    if ( wxDir::Exists(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/") == false )
+        wxFileName::Mkdir(main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup");
 
     my_parent->InputParamsPanel->Show(false);
     my_parent->StartPanel->Show(false);
@@ -1666,15 +1679,20 @@ void AbInitioManager::SetupRefinementJob( ) {
 
             FirstLastParticleForJob(first_particle, last_particle, number_of_particles, counter + 1, number_of_refinement_jobs);
 
-            wxString input_particle_images = active_stack_filename; //active_refinement_package->stack_filename;
-            wxString input_parameter_file  = written_parameter_files.Item(class_counter);
-            wxString input_reconstruction;
-            if ( class_counter == 0 ) { // I need to find another better way to set this RASTR azimuthal average
-                input_reconstruction = main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/startup3d_initial_RASTR_azavg.mrc";
-            }
-            else {
-                input_reconstruction = current_reference_filenames.Item(class_counter);
-            }
+            // wxString input_particle_images = active_stack_filename; //active_refinement_package->stack_filename;
+            // wxString input_parameter_file  = written_parameter_files.Item(class_counter);
+            // wxString input_reconstruction;
+            // if ( class_counter == 0 ) { // I need to find another better way to set this RASTR azimuthal average
+            //     input_reconstruction = main_frame->current_project.scratch_directory.GetFullPath( ) + "/Startup/startup3d_initial_RASTR_azavg.mrc";
+            // }
+            // else {
+            //     input_reconstruction = current_reference_filenames.Item(class_counter);
+            // }
+            //input_reconstruction                     = current_reference_filenames.Item(class_counter);
+
+            wxString input_particle_images           = active_stack_filename; //active_refinement_package->stack_filename;
+            wxString input_parameter_file            = written_parameter_files.Item(class_counter);
+            wxString input_reconstruction            = current_reference_filenames.Item(class_counter);
             wxString input_reconstruction_statistics = written_res_files.Item(class_counter);
             bool     use_statistics                  = true;
 
