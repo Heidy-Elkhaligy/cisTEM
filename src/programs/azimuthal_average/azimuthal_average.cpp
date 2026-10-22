@@ -126,6 +126,8 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
     bool     mask_upweighted    = false; // don't mask for now
     bool     align_upweighted   = false; // we want the tubes to be aligned vertically
     bool     center_upweighted  = false; // center the upweighted region in the middle so full image is aligned and centered
+    bool     whiten             = false;
+    bool     randomize_phi      = true;
     wxString RASTR_output_filename;
     wxString RASTR_output_star_filename;
 
@@ -154,8 +156,7 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
     bool     use_outside_value         = false;
     bool     use_memory                = false;
 
-    bool whiten = false;
-    int  max_threads;
+    int max_threads;
 
     UserInput* my_input = new UserInput("AzimuthalAverageNew", 1.0);
 
@@ -221,6 +222,7 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
             center_upweighted = my_input->GetYesNoFromUser("Center the upweighted regions?", "Do you want to center the upweighted regions?", "No");
         }
         whiten                     = my_input->GetYesNoFromUser("Whiten the output RASTR particles?", "Whiten RASTR particles only if cisTEM will be used for refinement, if any other program then whiten should be No. Default is whiten set to No", "NO");
+        randomize_phi              = my_input->GetYesNoFromUser("Randomize the initial phi angles used to generate RASTR particles instead of starting at 0?", "Randomize the starting phi angles instead of using 0 to help with generating a reference 3D masked RASTR particle when using generate3d", "Yes");
         RASTR_output_filename      = my_input->GetFilenameFromUser("Output masked upweighted regions filename", "The output MRC file containing average subtracted masked upweighted regions", "masked_upweighted_regions_output_filename.mrc", false);
         RASTR_output_star_filename = my_input->GetFilenameFromUser("Output star file with the psi and shift changes", "The output star file, containing the new psi and shift parameters", "my_RASTR_output_parameters.star", false);
     }
@@ -261,8 +263,8 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
 
     delete my_input;
 
-    my_current_job.Reset(56);
-    my_current_job.ManualSetArguments("tffffbtffffbffiibfbbttbbtiiiiibbbttbttbfffffttffffbbibb", input_filename.ToUTF8( ).data( ),
+    my_current_job.Reset(57);
+    my_current_job.ManualSetArguments("tffffbtffffbffiibfbbttbbtiiiiibbbttbttbfffffttffffbbibbb", input_filename.ToUTF8( ).data( ),
                                       pixel_size,
                                       acceleration_voltage,
                                       spherical_aberration,
@@ -318,7 +320,8 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
                                       use_memory,
                                       max_threads,
                                       relion_star,
-                                      whiten);
+                                      whiten,
+                                      randomize_phi);
 }
 
 // override the do calculation method which will be what is actually run..
@@ -380,6 +383,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     int      max_threads                              = my_current_job.arguments[52].ReturnIntegerArgument( );
     bool     relion_star                              = my_current_job.arguments[53].ReturnBoolArgument( );
     bool     whiten                                   = my_current_job.arguments[54].ReturnBoolArgument( );
+    bool     randomize_phi                            = my_current_job.arguments[55].ReturnBoolArgument( );
 
     // initiate I/O variables
     MRCFile  my_input_file(input_filename.ToStdString( ), false); // check all the functions and things done with the MRCFile and also check the wxPrintF statement
@@ -2577,7 +2581,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // generate random phi starting angles for RASTR processing
         // change 45.0 to something user specific later?? Here 45 degrees will generate random numbers around 0 +/- 45 (assuming 4 models are being used)
         // Here we keep only 45 degrees as in Relion project they project the masked model (as is) without affecting the mask position around phi, but in cisTEM the phi position gets affected when we do ExtractSlice
-        // auto random_phi_angles = GenerateRandomAnglesWithinRange(number_of_input_images, 360.0);
+        auto random_phi_angles = GenerateRandomAnglesWithinRange(number_of_input_images, 360.0);
 
         ///////////////////////////////////////////////////////////////////////
         ////// Do I need to do new after I joined the star file loop with the main RASTR subtraction loop????
@@ -2599,7 +2603,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         //mask_RASTR_projection, mask_RASTR_projection_centered,
         //, random_phi_angles
         for ( long model_counter = 0; model_counter < number_of_models; model_counter++ ) {
-#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, best_psi_value, best_x_shift_value, number_of_models, input_3d, mask_upweighted, image_stack, model_counter, noise_power_spectrum, mask_falloff, masked_upweighted_output, mask_RASTR_projection, mask_RASTR_projection_centered, whiten,                                                                                                                                                                                              \
+#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, best_psi_value, best_x_shift_value, number_of_models, input_3d, mask_upweighted, image_stack, model_counter, noise_power_spectrum, mask_falloff, masked_upweighted_output, mask_RASTR_projection, mask_RASTR_projection_centered, whiten, randomize_phi, random_phi_angles,                                                                                                                                                            \
                                                                                             ctf_parameters_stack, max_threads, diameter_bins, bins_count, current_image, mask_subtract_progress, align_upweighted, RASTR_projections_output, use_memory, adjusted_x_shifts, adjusted_y_shifts, input_ctf_values_from_star_file, current_ctf, pixel_size, padding_factor, masked_3d, x_mask_center, y_mask_center, x_dim, y_dim, z_mask_center, RASTR_adjusted_x_shifts, RASTR_adjusted_y_shifts, mask_projection, input_mask, filter_radius, outside_weight, cosine_edge, \
                                                                                             center_upweighted, sphere_mask_radius, RASTR_output_filename, my_output_RASTR_filename, projection_volume_3d, masked_projection_volume_3d) private(phi, projection_3d, projection_image, padded_projection_image, my_parameters_for_subtraction, mask_projection_image, padded_mask_projection_image, mask_parameters, subtracted_RASTR_image, centered_upweighted_image, unmasked_projection_image, unmasked_padded_projection_image, unmasked_projection_3d)
 
@@ -2660,8 +2664,15 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     subtracted_RASTR_image.BackwardFFT( );
                     subtracted_RASTR_image.Normalize( );
                 }
-
-                phi = model_counter * 360.0 / number_of_models;
+                if ( randomize_phi ) {
+                    phi              = model_counter * 360.0 / number_of_models;
+                    float random_phi = random_phi_angles[subtraction_image_counter];
+                    // add a random number to the initial phi
+                    phi = angle_within360(phi + random_phi);
+                }
+                else {
+                    phi = model_counter * 360.0 / number_of_models;
+                }
 
                 // // use the random phi generated per image and keep adding the reference phi to it so each image has its own random starting phi
                 // float random_phi       = random_phi_angles[subtraction_image_counter];
