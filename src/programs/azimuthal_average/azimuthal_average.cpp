@@ -2939,13 +2939,19 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         //#pragma omp for ordered schedule(static, 1)
         for ( long model_counter = 0; model_counter < number_of_models; model_counter++ ) {
             // calculate the reference phi once
-            float ref_phi = model_counter * 360.0 / number_of_models;
+            //float ref_phi = model_counter * 360.0 / number_of_models;
 
             for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
 
-                // // use the random phi generated per image and keep adding the reference phi to it so each image has its own random starting phi
-                // float random_phi       = random_phi_angles[image_counter];
-                // float RASTR_random_phi = angle_within360(ref_phi + random_phi);
+                if ( randomize_phi ) {
+                    phi              = model_counter * 360.0 / number_of_models;
+                    float random_phi = random_phi_angles[image_counter];
+                    // add a random number to the initial phi
+                    phi = angle_within360(phi + random_phi);
+                }
+                else {
+                    phi = model_counter * 360.0 / number_of_models;
+                }
 
                 long current_counter                                                  = number_of_input_images * model_counter + image_counter; // This is for the position in the stack only
                 RASTR_output_params.all_parameters[current_counter].position_in_stack = current_counter + 1;
@@ -2981,7 +2987,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 RASTR_output_params.all_parameters[current_counter].theta = 90.0f;
 
                 // RASTR_output_params.all_parameters[current_counter].phi                                = RASTR_random_phi; //ref_phi
-                RASTR_output_params.all_parameters[current_counter].phi                                = ref_phi; //ref_phi
+                RASTR_output_params.all_parameters[current_counter].phi                                = phi; //ref_phi
                 RASTR_output_params.all_parameters[current_counter].defocus_1                          = ctf_parameters_stack[image_counter].defocus_1;
                 RASTR_output_params.all_parameters[current_counter].defocus_2                          = ctf_parameters_stack[image_counter].defocus_2;
                 RASTR_output_params.all_parameters[current_counter].defocus_angle                      = ctf_parameters_stack[image_counter].astigmatism_angle;
