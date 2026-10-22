@@ -388,6 +388,12 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     int  x_dim                  = my_input_file.ReturnXSize( );
     int  y_dim                  = my_input_file.ReturnYSize( );
 
+    // check if the input images are odd or even as we alsways want to work with even number to facilitate the subset selection later
+    // if odd remove one so when we are looping we are only looping over an even number of images
+    if ( number_of_input_images % 2 != 0 ) {
+        number_of_input_images = number_of_input_images - 1;
+    }
+
     // If use_memory to make things fast
     Image* image_stack;
     if ( use_memory )
