@@ -153,7 +153,9 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
     float    outside_value             = 0.0;
     bool     use_outside_value         = false;
     bool     use_memory                = false;
-    int      max_threads;
+
+    bool whiten = false;
+    int  max_threads;
 
     UserInput* my_input = new UserInput("AzimuthalAverageNew", 1.0);
 
@@ -218,6 +220,7 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
             align_upweighted  = my_input->GetYesNoFromUser("Align the upweighted regions vertically?", "Do you want to align the upweighted regions vertically?", "No");
             center_upweighted = my_input->GetYesNoFromUser("Center the upweighted regions?", "Do you want to center the upweighted regions?", "No");
         }
+        whiten                     = my_input->GetYesNoFromUser("Whiten the output RASTR particles?", "Whiten RASTR particles only if cisTEM will be used for refinement, if any other program then whiten should be No. Default is whiten set to No", "NO");
         RASTR_output_filename      = my_input->GetFilenameFromUser("Output masked upweighted regions filename", "The output MRC file containing average subtracted masked upweighted regions", "masked_upweighted_regions_output_filename.mrc", false);
         RASTR_output_star_filename = my_input->GetFilenameFromUser("Output star file with the psi and shift changes", "The output star file, containing the new psi and shift parameters", "my_RASTR_output_parameters.star", false);
     }
@@ -228,8 +231,6 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
         SPOT_RASTR_output_star_filename = my_input->GetFilenameFromUser("Output star file with the psi and shift changes", "The output star file, containing the new psi and shift parameters", "my_SPOT_RASTR_output_parameters.star", false);
     }
 
-    if ( (RASTR == true) || (SPOT_RASTR == true) ) {
-    }
     // expert options parameters
     set_expert_options = my_input->GetYesNoFromUser("Set Expert Options?", "Set these for more control, hopefully not needed", "NO");
 
@@ -250,7 +251,6 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
         outside_value             = my_input->GetFloatFromUser("Outside mask value", "Value used to set density outside the mask", "0.0", 0.0);
         use_outside_value         = my_input->GetYesNoFromUser("Use outside mask value", "Should the density outside the mask be set to the user-provided value", "No");
     }
-
     use_memory = my_input->GetYesNoFromUser("Allocate images to memory?", "Choice between memory allocation or using functions; no is recommended for systems with limited memory.", "NO");
 
 #ifdef _OPENMP
@@ -261,8 +261,8 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
 
     delete my_input;
 
-    my_current_job.Reset(55);
-    my_current_job.ManualSetArguments("tffffbtffffbffiibfbbttbbtiiiiibbbttbttbfffffttffffbbib", input_filename.ToUTF8( ).data( ),
+    my_current_job.Reset(56);
+    my_current_job.ManualSetArguments("tffffbtffffbffiibfbbttbbtiiiiibbbttbttbfffffttffffbbibb", input_filename.ToUTF8( ).data( ),
                                       pixel_size,
                                       acceleration_voltage,
                                       spherical_aberration,
@@ -317,7 +317,8 @@ void AzimuthalAverageNew::DoInteractiveUserInput( ) {
                                       use_outside_value,
                                       use_memory,
                                       max_threads,
-                                      relion_star);
+                                      relion_star,
+                                      whiten);
 }
 
 // override the do calculation method which will be what is actually run..
@@ -378,6 +379,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     bool     use_memory                               = my_current_job.arguments[51].ReturnBoolArgument( );
     int      max_threads                              = my_current_job.arguments[52].ReturnIntegerArgument( );
     bool     relion_star                              = my_current_job.arguments[53].ReturnBoolArgument( );
+    bool     whiten                                   = my_current_job.arguments[54].ReturnBoolArgument( );
 
     // initiate I/O variables
     MRCFile  my_input_file(input_filename.ToStdString( ), false); // check all the functions and things done with the MRCFile and also check the wxPrintF statement
@@ -403,10 +405,10 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
     // input stack low pass filtered and masked
     Image* image_stack_filtered_masked;
-    Image* image_stack_whitened_masked;
+    //Image* image_stack_whitened_masked;
     if ( use_memory ) {
         image_stack_filtered_masked = new Image[number_of_input_images];
-        image_stack_whitened_masked = new Image[number_of_input_images];
+        //image_stack_whitened_masked = new Image[number_of_input_images];
     }
     else {
         image_stack_filtered_masked = nullptr;
@@ -624,9 +626,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
     wxPrintf("\nFinding Initial Tube Rotation...\n\n");
     ProgressBar* my_progress = new ProgressBar(number_of_input_images);
-
+    // image_stack_whitened_masked,
 #pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(my_input_file, best_sum_column, tube_rotation, all_columns_sum, number_of_input_images, max_threads, use_auto_corr, use_ft, low_pass_resolution, x_dim, y_dim, image_stack_filtered_masked, \
-                                                                                            x_shift_column, all_diameters, psi_step, min_tube_diameter, max_tube_diameter, pixel_size, psi_min, psi_max, low_pass, use_memory, image_stack_whitened_masked,                             \
+                                                                                            x_shift_column, all_diameters, psi_step, min_tube_diameter, max_tube_diameter, pixel_size, psi_min, psi_max, low_pass, use_memory,                                                          \
                                                                                             defocus_1, defocus_2, astigmatism_angle, additional_phase_shift, current_ctf, my_progress, cosine_edge, outside_weight, filter_radius, outside_value, use_outside_value,                    \
                                                                                             CTFSumOfSquares, bins_count, bin_range, sum_images, diameter_bins, outer_mask_radius, center_peak_index, mask_edge,                                                                         \
                                                                                             absolute, apply_beam_tilt, apply_envelope, input_ctf_values_from_star_file, ctf_parameters_stack, I) private(current_image, final_image)
@@ -1395,24 +1397,32 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     // For debugging the find peaks function
     save_all_columns_sum_to_file(all_columns_sum_cross_corr, "column_sums_from_cross_correlation_output.txt");
 
-    Image added_image_after_aln;
-    Image sum_images_after_aln[bins_count];
+    // // Image added_image_after_aln;
+    // Image sum_images_after_aln[bins_count];
+
+    // for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
+    //     sum_images_after_aln[bin_index].Allocate(x_dim, y_dim, true); //allocate in real space
+    //     sum_images_after_aln[bin_index].SetToConstant(0.0);
+    // }
+
+    // Image added_image_after_aln;
+    Image sum_images_to_process[bins_count];
 
     for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
-        sum_images_after_aln[bin_index].Allocate(x_dim, y_dim, true); //allocate in real space
-        sum_images_after_aln[bin_index].SetToConstant(0.0);
+        sum_images_to_process[bin_index].Allocate(x_dim, y_dim, true); //allocate in real space
+        sum_images_to_process[bin_index].SetToConstant(0.0);
     }
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////////////////    ADDED NEW NEED ADJUSTMENTS /////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    Image added_whiten_image;
-    // Initialize the sum images based on the number specified by the user
-    Image sum_whiten_images[bins_count];
+    // // Image added_whiten_image;
+    // // Initialize the sum images based on the number specified by the user
+    // Image sum_whiten_images[bins_count];
 
-    for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
-        sum_whiten_images[bin_index].Allocate(x_dim, y_dim, true); //allocate in real space
-        sum_whiten_images[bin_index].SetToConstant(0.0);
-    }
+    // for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
+    //     sum_whiten_images[bin_index].Allocate(x_dim, y_dim, true); //allocate in real space
+    //     sum_whiten_images[bin_index].SetToConstant(0.0);
+    // }
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // To Whiten images
     Curve noise_power_spectrum;
@@ -1427,138 +1437,180 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     Curve number_of_terms;
     float mask_radius_for_noise;
     float mask_falloff = 20.0; // in Angstrom
+    if ( whiten ) {
+        wxPrintf("\nCalculating noise power spectrum...\n\n");
 
-    wxPrintf("\nCalculating noise power spectrum...\n\n");
+        noise_power_spectrum.SetupXAxisForFourierSpace(sum_power.logical_x_dimension, 2.f);
+        number_of_terms.SetupXAxisForFourierSpace(sum_power.logical_x_dimension, 2.f);
+        // current_line         = 0;
+        // random_reset_counter = 0;
 
-    noise_power_spectrum.SetupXAxisForFourierSpace(sum_power.logical_x_dimension, 2.f);
-    number_of_terms.SetupXAxisForFourierSpace(sum_power.logical_x_dimension, 2.f);
-    // current_line         = 0;
-    // random_reset_counter = 0;
-
-    noise_power_spectrum.MakeThreadSafeForNThreads(max_threads);
-    number_of_terms.MakeThreadSafeForNThreads(max_threads);
+        noise_power_spectrum.MakeThreadSafeForNThreads(max_threads);
+        number_of_terms.MakeThreadSafeForNThreads(max_threads);
 
 #pragma omp parallel num_threads(max_threads) default(none) shared(use_memory, image_stack, best_psi_value, best_x_shift_value, my_input_file, outer_mask_radius, mask_falloff, sum_power, pixel_size, number_of_input_images) private(temp_image_local, sum_power_local, input_image_local, mask_radius_for_noise)
-    {
-
-        input_image_local.Allocate(my_input_file.ReturnXSize( ), my_input_file.ReturnYSize( ), true);
-        temp_image_local.Allocate(my_input_file.ReturnXSize( ), my_input_file.ReturnYSize( ), true);
-        sum_power_local.Allocate(my_input_file.ReturnXSize( ), my_input_file.ReturnYSize( ), false);
-        sum_power_local.SetToConstant(0.0f);
-#pragma omp for schedule(static, 1)
-        for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
-
-            if ( use_memory ) {
-                input_image_local.CopyFrom(&image_stack[image_counter]);
-            }
-            else {
-#pragma omp critical
-                input_image_local.ReadSlice(&my_input_file, image_counter + 1);
-            }
-
-            // align the filaments top down to correctly estimate the noise as much as possible
-            //changed this to +psi as I am now rotating the image to the azimuthal average reference
-            input_image_local.Rotate2DInPlace(best_psi_value[image_counter], FLT_MAX);
-            // update the x_shift column to get the shift that is needed to center the tube after rotation
-            // I removed the Y-shift as now the image was rotated to the reference and only X-shift is important
-            input_image_local.PhaseShift(best_x_shift_value[image_counter], 0.0, 0.0);
-
-            // we will calculate the noise on the edges of the image
-            mask_radius_for_noise = 0.95f * my_input_file.ReturnXSize( ) / 2.0f - mask_falloff / 2.0f / pixel_size;
-
-            float variance = ReturnVarianceOfRealValuesOnVerticalEdges(&input_image_local, mask_radius_for_noise, true);
-            // .ReturnVarianceOfRealValues(mask_radius_for_noise, 0.0f, 0.0f, 0.0f, true); //invert_mask = true here? to return variance outside the masked region
-            input_image_local.MultiplyByConstant(1.0f / sqrtf(variance));
-            input_image_local.CosineMask(mask_radius_for_noise, mask_falloff / pixel_size, true);
-            input_image_local.ForwardFFT( );
-            temp_image_local.CopyFrom(&input_image_local);
-            temp_image_local.ConjugateMultiplyPixelWise(input_image_local);
-            sum_power_local.AddImage(&temp_image_local);
-        }
-
-#pragma omp critical
         {
-            sum_power.AddImage(&sum_power_local);
-        }
 
-        input_image_local.Deallocate( );
-        sum_power_local.Deallocate( );
-        temp_image_local.Deallocate( );
+            input_image_local.Allocate(my_input_file.ReturnXSize( ), my_input_file.ReturnYSize( ), true);
+            temp_image_local.Allocate(my_input_file.ReturnXSize( ), my_input_file.ReturnYSize( ), true);
+            sum_power_local.Allocate(my_input_file.ReturnXSize( ), my_input_file.ReturnYSize( ), false);
+            sum_power_local.SetToConstant(0.0f);
+#pragma omp for schedule(static, 1)
+            for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
 
-    } // end omp section
+                if ( use_memory ) {
+                    input_image_local.CopyFrom(&image_stack[image_counter]);
+                }
+                else {
+#pragma omp critical
+                    input_image_local.ReadSlice(&my_input_file, image_counter + 1);
+                }
 
-    sum_power.Compute1DRotationalAverage(noise_power_spectrum, number_of_terms);
-    noise_power_spectrum.SquareRoot( );
-    noise_power_spectrum.Reciprocal( );
-    noise_power_spectrum.WriteToFile("noise_power.txt");
+                // align the filaments top down to correctly estimate the noise as much as possible
+                //changed this to +psi as I am now rotating the image to the azimuthal average reference
+                input_image_local.Rotate2DInPlace(best_psi_value[image_counter], FLT_MAX);
+                // update the x_shift column to get the shift that is needed to center the tube after rotation
+                // I removed the Y-shift as now the image was rotated to the reference and only X-shift is important
+                input_image_local.PhaseShift(best_x_shift_value[image_counter], 0.0, 0.0);
+
+                // we will calculate the noise on the edges of the image
+                mask_radius_for_noise = 0.95f * my_input_file.ReturnXSize( ) / 2.0f - mask_falloff / 2.0f / pixel_size;
+
+                float variance = ReturnVarianceOfRealValuesOnVerticalEdges(&input_image_local, mask_radius_for_noise, true);
+                // .ReturnVarianceOfRealValues(mask_radius_for_noise, 0.0f, 0.0f, 0.0f, true); //invert_mask = true here? to return variance outside the masked region
+                input_image_local.MultiplyByConstant(1.0f / sqrtf(variance));
+                input_image_local.CosineMask(mask_radius_for_noise, mask_falloff / pixel_size, true);
+                input_image_local.ForwardFFT( );
+                temp_image_local.CopyFrom(&input_image_local);
+                temp_image_local.ConjugateMultiplyPixelWise(input_image_local);
+                sum_power_local.AddImage(&temp_image_local);
+            }
+
+#pragma omp critical
+            {
+                sum_power.AddImage(&sum_power_local);
+            }
+
+            input_image_local.Deallocate( );
+            sum_power_local.Deallocate( );
+            temp_image_local.Deallocate( );
+
+        } // end omp section
+
+        sum_power.Compute1DRotationalAverage(noise_power_spectrum, number_of_terms);
+        noise_power_spectrum.SquareRoot( );
+        noise_power_spectrum.Reciprocal( );
+        noise_power_spectrum.WriteToFile("noise_power.txt");
+    }
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+    Image image_to_process; //depending if whiten is set to tur or false
     wxPrintf("\nCreating Final Sum Images...\n\n");
     ProgressBar* update_sum_progress = new ProgressBar(number_of_input_images);
 
     // creating a sum image after getting the best rotation from the alignment
     for ( long image_counter = 0; image_counter < number_of_input_images; image_counter++ ) {
         if ( use_memory ) {
-            added_image_after_aln.CopyFrom(&image_stack[image_counter]);
-            added_whiten_image.CopyFrom(&image_stack[image_counter]);
+            // added_image_after_aln.CopyFrom(&image_stack[image_counter]);
+            // added_whiten_image.CopyFrom(&image_stack[image_counter]);
+            image_to_process.CopyFrom(&image_stack[image_counter]);
         }
         else {
-            added_image_after_aln.ReadSlice(&my_input_file, image_counter + 1);
-            added_whiten_image.ReadSlice(&my_input_file, image_counter + 1);
+            // added_image_after_aln.ReadSlice(&my_input_file, image_counter + 1);
+            // added_whiten_image.ReadSlice(&my_input_file, image_counter + 1);
+            image_to_process.ReadSlice(&my_input_file, image_counter + 1);
         }
 
-        // normalize the added image
-        added_image_after_aln.ForwardFFT( );
-        added_image_after_aln.ZeroCentralPixel( );
-        added_image_after_aln.BackwardFFT( );
-        added_image_after_aln.Normalize( );
+        if ( whiten ) {
+            //             //  added_whiten_image.ReadSlice(&my_input_file, image_counter + 1);
+            // // I will not normalize here using Normalize() but will do whitenning and normalization as in refine3d
+            // added_whiten_image.ForwardFFT( );
+            // added_whiten_image.ApplyCurveFilterUninterpolated(&noise_power_spectrum);
+            // added_whiten_image.BackwardFFT( );
 
-        //  added_whiten_image.ReadSlice(&my_input_file, image_counter + 1);
-        // I will not normalize here using Normalize() but will do whitenning and normalization as in refine3d
-        added_whiten_image.ForwardFFT( );
-        added_whiten_image.ApplyCurveFilterUninterpolated(&noise_power_spectrum);
-        added_whiten_image.BackwardFFT( );
+            // // Normalize background variance and average
+            // float variance = added_whiten_image.ReturnVarianceOfRealValues(added_image_after_aln.physical_address_of_box_center_x - mask_falloff / pixel_size, 0.0, 0.0, 0.0, true);
+            // float average  = added_whiten_image.ReturnAverageOfRealValues(added_image_after_aln.physical_address_of_box_center_x - mask_falloff / pixel_size, true);
+            // if ( variance == 0.0f )
+            //     added_whiten_image.SetToConstant(0.0f);
+            // else
+            //     added_whiten_image.AddMultiplyConstant(-average, 1.0 / sqrtf(variance));
 
-        // Normalize background variance and average
-        float variance = added_whiten_image.ReturnVarianceOfRealValues(added_image_after_aln.physical_address_of_box_center_x - mask_falloff / pixel_size, 0.0, 0.0, 0.0, true);
-        float average  = added_whiten_image.ReturnAverageOfRealValues(added_image_after_aln.physical_address_of_box_center_x - mask_falloff / pixel_size, true);
-        if ( variance == 0.0f )
-            added_whiten_image.SetToConstant(0.0f);
-        else
-            added_whiten_image.AddMultiplyConstant(-average, 1.0 / sqrtf(variance));
+            // if ( input_ctf_values_from_star_file ) {
+            //     current_ctf.Init(ctf_parameters_stack[image_counter].acceleration_voltage, ctf_parameters_stack[image_counter].spherical_aberration, ctf_parameters_stack[image_counter].amplitude_contrast, ctf_parameters_stack[image_counter].defocus_1, ctf_parameters_stack[image_counter].defocus_2, ctf_parameters_stack[image_counter].astigmatism_angle, ctf_parameters_stack[image_counter].lowest_frequency_for_fitting, ctf_parameters_stack[image_counter].highest_frequency_for_fitting, ctf_parameters_stack[image_counter].astigmatism_tolerance, ctf_parameters_stack[image_counter].pixel_size, ctf_parameters_stack[image_counter].additional_phase_shift);
+            // }
 
-        if ( input_ctf_values_from_star_file ) {
-            current_ctf.Init(ctf_parameters_stack[image_counter].acceleration_voltage, ctf_parameters_stack[image_counter].spherical_aberration, ctf_parameters_stack[image_counter].amplitude_contrast, ctf_parameters_stack[image_counter].defocus_1, ctf_parameters_stack[image_counter].defocus_2, ctf_parameters_stack[image_counter].astigmatism_angle, ctf_parameters_stack[image_counter].lowest_frequency_for_fitting, ctf_parameters_stack[image_counter].highest_frequency_for_fitting, ctf_parameters_stack[image_counter].astigmatism_tolerance, ctf_parameters_stack[image_counter].pixel_size, ctf_parameters_stack[image_counter].additional_phase_shift);
+            //  added_whiten_image.ReadSlice(&my_input_file, image_counter + 1);
+            // I will not normalize here using Normalize() but will do whitenning and normalization as in refine3d
+            image_to_process.ForwardFFT( );
+            image_to_process.ApplyCurveFilterUninterpolated(&noise_power_spectrum);
+            image_to_process.BackwardFFT( );
+
+            // Normalize background variance and average
+            float variance = image_to_process.ReturnVarianceOfRealValues(image_to_process.physical_address_of_box_center_x - mask_falloff / pixel_size, 0.0, 0.0, 0.0, true);
+            float average  = image_to_process.ReturnAverageOfRealValues(image_to_process.physical_address_of_box_center_x - mask_falloff / pixel_size, true);
+            if ( variance == 0.0f )
+                image_to_process.SetToConstant(0.0f);
+            else
+                image_to_process.AddMultiplyConstant(-average, 1.0 / sqrtf(variance));
+
+            if ( input_ctf_values_from_star_file ) {
+                current_ctf.Init(ctf_parameters_stack[image_counter].acceleration_voltage, ctf_parameters_stack[image_counter].spherical_aberration, ctf_parameters_stack[image_counter].amplitude_contrast, ctf_parameters_stack[image_counter].defocus_1, ctf_parameters_stack[image_counter].defocus_2, ctf_parameters_stack[image_counter].astigmatism_angle, ctf_parameters_stack[image_counter].lowest_frequency_for_fitting, ctf_parameters_stack[image_counter].highest_frequency_for_fitting, ctf_parameters_stack[image_counter].astigmatism_tolerance, ctf_parameters_stack[image_counter].pixel_size, ctf_parameters_stack[image_counter].additional_phase_shift);
+            }
+        }
+        else {
+            // normalize the added image
+            // added_image_after_aln.ForwardFFT( );
+            // added_image_after_aln.ZeroCentralPixel( );
+            // added_image_after_aln.BackwardFFT( );
+            // added_image_after_aln.Normalize( );
+            image_to_process.ForwardFFT( );
+            image_to_process.ZeroCentralPixel( );
+            image_to_process.BackwardFFT( );
+            image_to_process.Normalize( );
         }
 
-        added_image_after_aln.ForwardFFT( );
-        added_whiten_image.ForwardFFT( );
+        // added_image_after_aln.ForwardFFT( );
+        // added_whiten_image.ForwardFFT( );
+        image_to_process.ForwardFFT( );
 
         for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
             if ( diameter_bins[image_counter] == bin_index ) { // This should catch any diameter within the range
-                ApplyCTFAndReturnCTFSumOfSquares(added_image_after_aln, current_ctf, absolute, apply_beam_tilt, apply_envelope, (*CTFSumOfSquaresFinal)[bin_index]);
-                ApplyCTFAndReturnCTFSumOfSquares(added_whiten_image, current_ctf, absolute, apply_beam_tilt, apply_envelope, (*CTFSumOfSquaresFinal)[bin_index]);
+                // ApplyCTFAndReturnCTFSumOfSquares(added_image_after_aln, current_ctf, absolute, apply_beam_tilt, apply_envelope, (*CTFSumOfSquaresFinal)[bin_index]);
+                // ApplyCTFAndReturnCTFSumOfSquares(added_whiten_image, current_ctf, absolute, apply_beam_tilt, apply_envelope, (*CTFSumOfSquaresFinal)[bin_index]);
+                ApplyCTFAndReturnCTFSumOfSquares(image_to_process, current_ctf, absolute, apply_beam_tilt, apply_envelope, (*CTFSumOfSquaresFinal)[bin_index]);
             }
         }
 
-        added_image_after_aln.BackwardFFT( );
-        added_whiten_image.BackwardFFT( );
-        //changed this to +psi as I am now rotating the image to the azimuthal average reference
-        added_image_after_aln.Rotate2DInPlace(best_psi_value[image_counter], FLT_MAX);
-        added_whiten_image.Rotate2DInPlace(best_psi_value[image_counter], FLT_MAX);
-        // update the x_shift column to get the shift that is needed to center the tube after rotation
-        // I removed the Y-shift as now the image was rotated to the reference and only X-shift is important
-        added_image_after_aln.PhaseShift(best_x_shift_value[image_counter], 0.0, 0.0);
-        added_whiten_image.PhaseShift(best_x_shift_value[image_counter], 0.0, 0.0);
+        // added_image_after_aln.BackwardFFT( );
+        // added_whiten_image.BackwardFFT( );
+        // //changed this to +psi as I am now rotating the image to the azimuthal average reference
+        // added_image_after_aln.Rotate2DInPlace(best_psi_value[image_counter], FLT_MAX);
+        // added_whiten_image.Rotate2DInPlace(best_psi_value[image_counter], FLT_MAX);
+        // // update the x_shift column to get the shift that is needed to center the tube after rotation
+        // // I removed the Y-shift as now the image was rotated to the reference and only X-shift is important
+        // added_image_after_aln.PhaseShift(best_x_shift_value[image_counter], 0.0, 0.0);
+        // added_whiten_image.PhaseShift(best_x_shift_value[image_counter], 0.0, 0.0);
+
+        image_to_process.BackwardFFT( );
+
+        // Rotate and center the selected image.
+        image_to_process.Rotate2DInPlace(best_psi_value[image_counter], FLT_MAX);
+        image_to_process.PhaseShift(best_x_shift_value[image_counter], 0.0, 0.0);
 
         // using the dynamic memory allocation to add the current image to the sum images based on the tube diameter
         // only images within the specified range will be added and their CTF will be saved to be used later
         for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
-            wxPrintf("diameter_bins [image counter] is %i and bin_index is %i\n", diameter_bins[image_counter], bin_index);
+            // wxPrintf("diameter_bins [%li] is %i and bin_index is %i\n", image_counter, diameter_bins[image_counter], bin_index);
             if ( diameter_bins[image_counter] == bin_index ) { // This should catch any diameter within the range
-                sum_images_after_aln[bin_index].AddImage(&added_image_after_aln);
-                sum_whiten_images[bin_index].AddImage(&added_whiten_image);
+                // sum_images_after_aln[bin_index].AddImage(&added_image_after_aln);
+                // sum_whiten_images[bin_index].AddImage(&added_whiten_image);
+                // if ( whiten )
+                //     sum_whiten_images[bin_index].AddImage(&image_to_process);
+                // else
+                //     sum_images_after_aln[bin_index].AddImage(&image_to_process);
+                sum_images_to_process[bin_index].AddImage(&image_to_process);
             }
         }
         if ( is_running_locally == true && ReturnThreadNumberOfCurrentThread( ) == 0 )
@@ -1573,29 +1625,45 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // sum_image_direction(&sum_images_after_aln[bin_index], 2);
         // sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("sum_images_after_aln_before_sum_image_direction.mrc", bin_index + 1);
 
-        std::vector<float> sum_images_after_aln_profile;
-        sum_images_after_aln_profile = project_along_x(&sum_images_after_aln[bin_index]);
-        back_project_along_x(sum_images_after_aln_profile, &sum_images_after_aln[bin_index]);
-        sum_images_after_aln[bin_index].ForwardFFT( );
-        divide_by_ctf_sum_of_squares(sum_images_after_aln[bin_index], (*CTFSumOfSquaresFinal)[bin_index]);
-        //sum_images_after_aln[bin_index].GaussianLowPassFilter((pixel_size * 2) / 150);
-        sum_images_after_aln[bin_index].BackwardFFT( );
-        sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("final_sum_image.mrc", bin_index + 1);
-
         // whitened image
         // Vertically summing the image to ensure cross-correlation doesn't correlate by mistake to a wrong area if input images are pre-aligned
         // sum_image_direction(&sum_whiten_images[bin_index], 2);
         // sum_whiten_images[bin_index].QuickAndDirtyWriteSlice("sum_whiten_images_before_sum_image_direction.mrc", bin_index + 1);
+        // if ( whiten ) {
+        //     std::vector<float> sum_whiten_images_profile;
+        //     sum_whiten_images_profile = project_along_x(&sum_whiten_images[bin_index]);
+        //     back_project_along_x(sum_whiten_images_profile, &sum_whiten_images[bin_index]);
 
-        std::vector<float> sum_whiten_images_profile;
-        sum_whiten_images_profile = project_along_x(&sum_whiten_images[bin_index]);
-        back_project_along_x(sum_whiten_images_profile, &sum_whiten_images[bin_index]);
+        //     sum_whiten_images[bin_index].ForwardFFT( );
+        //     divide_by_ctf_sum_of_squares(sum_whiten_images[bin_index], (*CTFSumOfSquaresFinal)[bin_index]);
+        //     //sum_whiten_images[bin_index].GaussianLowPassFilter((pixel_size * 2) / 150);
+        //     sum_whiten_images[bin_index].BackwardFFT( );
+        //     sum_whiten_images[bin_index].QuickAndDirtyWriteSlice("sum_whiten_images.mrc", bin_index + 1);
+        // }
+        // else {
+        //     std::vector<float> sum_images_after_aln_profile;
+        //     sum_images_after_aln_profile = project_along_x(&sum_images_after_aln[bin_index]);
+        //     back_project_along_x(sum_images_after_aln_profile, &sum_images_after_aln[bin_index]);
+        //     sum_images_after_aln[bin_index].ForwardFFT( );
+        //     divide_by_ctf_sum_of_squares(sum_images_after_aln[bin_index], (*CTFSumOfSquaresFinal)[bin_index]);
+        //     //sum_images_after_aln[bin_index].GaussianLowPassFilter((pixel_size * 2) / 150);
+        //     sum_images_after_aln[bin_index].BackwardFFT( );
+        //     sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("final_sum_image.mrc", bin_index + 1);
+        // }
 
-        sum_whiten_images[bin_index].ForwardFFT( );
-        divide_by_ctf_sum_of_squares(sum_whiten_images[bin_index], (*CTFSumOfSquaresFinal)[bin_index]);
-        //sum_whiten_images[bin_index].GaussianLowPassFilter((pixel_size * 2) / 150);
-        sum_whiten_images[bin_index].BackwardFFT( );
-        sum_whiten_images[bin_index].QuickAndDirtyWriteSlice("sum_whiten_images.mrc", bin_index + 1);
+        std::vector<float> sum_images_profile;
+        sum_images_profile = project_along_x(&sum_images_to_process[bin_index]);
+        back_project_along_x(sum_images_profile, &sum_images_to_process[bin_index]);
+        sum_images_to_process[bin_index].ForwardFFT( );
+        divide_by_ctf_sum_of_squares(sum_images_to_process[bin_index], (*CTFSumOfSquaresFinal)[bin_index]);
+        //sum_images_after_aln[bin_index].GaussianLowPassFilter((pixel_size * 2) / 150);
+        sum_images_to_process[bin_index].BackwardFFT( );
+        if ( whiten ) {
+            sum_images_to_process[bin_index].QuickAndDirtyWriteSlice("sum_whiten_images.mrc", bin_index + 1);
+        }
+        else {
+            sum_images_to_process[bin_index].QuickAndDirtyWriteSlice("final_sum_image.mrc", bin_index + 1);
+        }
     }
     // delete CTFSumOfSquaresFinal;
     // sum_images_after_aln->Deallocate( );
@@ -1726,47 +1794,47 @@ bool AzimuthalAverageNew::DoCalculation( ) {
     // save the azimuthal average if the RASTR and SPOT RASTR are not true in the correct contrast
     if ( RASTR == false && SPOT_RASTR == false ) {
         for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
-            model_volume[bin_index].Allocate(padding_factor * sum_images_after_aln[bin_index].logical_x_dimension, padding_factor * sum_images_after_aln[bin_index].logical_y_dimension, padding_factor * sum_images_after_aln[bin_index].logical_x_dimension, true);
+            model_volume[bin_index].Allocate(padding_factor * sum_images_to_process[bin_index].logical_x_dimension, padding_factor * sum_images_to_process[bin_index].logical_y_dimension, padding_factor * sum_images_to_process[bin_index].logical_x_dimension, true);
             model_volume[bin_index].SetToConstant(0.0);
 
-            float edge_value = sum_images_after_aln[bin_index].ReturnAverageOfRealValuesOnEdges( );
-            sum_images_after_aln[bin_index].Resize(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, 1, edge_value);
-            //sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("resized_sum_image_with_average.mrc", bin_index + 1);
+            float edge_value = sum_images_to_process[bin_index].ReturnAverageOfRealValuesOnEdges( );
+            sum_images_to_process[bin_index].Resize(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, 1, edge_value);
+            //sum_images_to_process[bin_index].QuickAndDirtyWriteSlice("resized_sum_image_with_average.mrc", bin_index + 1);
 
             // fill the padded version with the sum image
             // then do average rotationally before filling the volume
-            sum_image_direction(&sum_images_after_aln[bin_index], 2);
-            //sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("sum_image_after_adding_average.mrc", bin_index + 1);
+            sum_image_direction(&sum_images_to_process[bin_index], 2);
+            //sum_images_to_process[bin_index].QuickAndDirtyWriteSlice("sum_image_after_adding_average.mrc", bin_index + 1);
 
             // mask the 2D image to avoid ring effect outside the azimuthal average volume
             if ( outer_mask_radius != 0 ) {
-                sum_images_after_aln[bin_index].CosineMask(outer_mask_radius, mask_edge, false, false, 0.0f);
+                sum_images_to_process[bin_index].CosineMask(outer_mask_radius, mask_edge, false, false, 0.0f);
             }
             else if ( outer_mask_radius == 0 ) {
-                sum_images_after_aln[bin_index].CosineMask(x_dim * 0.45, mask_edge, false, false, 0.0f);
+                sum_images_to_process[bin_index].CosineMask(x_dim * 0.45, mask_edge, false, false, 0.0f);
             }
 
-            sum_images_after_aln[bin_index].ApplyRampFilter( );
-            sum_images_after_aln[bin_index].AverageRotationally( );
-            sum_images_after_aln[bin_index].InvertRealValues( );
+            sum_images_to_process[bin_index].ApplyRampFilter( );
+            sum_images_to_process[bin_index].AverageRotationally( );
+            sum_images_to_process[bin_index].InvertRealValues( );
 
             // fill in the model volume with the azimuthal average slice
             long volume_counter = 0;
             for ( int z = 0; z < model_volume[bin_index].logical_z_dimension; z++ ) {
                 for ( int y = 0; y < model_volume[bin_index].logical_y_dimension; y++ ) {
                     for ( int x = 0; x < model_volume[bin_index].logical_x_dimension; x++ ) {
-                        long pixel_coord_xy                                 = sum_images_after_aln[bin_index].ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
-                        model_volume[bin_index].real_values[volume_counter] = sum_images_after_aln[bin_index].real_values[pixel_coord_xy];
+                        long pixel_coord_xy                                 = sum_images_to_process[bin_index].ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
+                        model_volume[bin_index].real_values[volume_counter] = sum_images_to_process[bin_index].real_values[pixel_coord_xy];
                         volume_counter++;
                     }
-                    volume_counter += sum_images_after_aln[bin_index].padding_jump_value;
+                    volume_counter += sum_images_to_process[bin_index].padding_jump_value;
                 }
             }
-            //resize the sum_images_after_aln back to be unpadded
-            sum_images_after_aln[bin_index].Resize(x_dim, y_dim, 1, edge_value);
+            //resize the sum_images_to_process back to be unpadded
+            sum_images_to_process[bin_index].Resize(x_dim, y_dim, 1, edge_value);
 
             // I need to move this to another location to ensure saving the azimuthal averages volume with correct contrast (I need to invert real values)
-            // This can't happen here it needs to be later when sum_images_after_aln will not be used anymore
+            // This can't happen here it needs to be later when sum_images_to_process will not be used anymore
             // save the azimuthal average model to an MRC file
             // set the precision of the bin spaning range and its precision to 2
             //float bin_span        = ((bin_index * min_tube_diameter) + bin_range);
@@ -1774,7 +1842,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
             model_file_name       = output_azimuthal_average_volume_filename + "_bin" + std::to_string(bin_index + 1) + "_" + floatToString(((min_tube_diameter + (bin_index * bin_range)) * pixel_size), 2) + "A_" + floatToString((min_tube_diameter + (bin_range * (bin_index + 1))) * pixel_size, 2) + "A.mrc";
             output_model_filename = new MRCFile(model_file_name, true, true);
             for ( long model_counter = 0; model_counter < model_dimension; model_counter++ ) {
-                sum_images_after_aln[bin_index].WriteSlice(output_model_filename, model_counter + 1);
+                sum_images_to_process[bin_index].WriteSlice(output_model_filename, model_counter + 1);
             }
             // output_model_filename->my_header.SetDimensionsVolume(model_dimension, model_dimension, model_dimension);
             // output_model_filename->my_header.SetPixelSize(pixel_size);
@@ -1864,9 +1932,9 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         // DO I NEED TO SAVE THE NORMAL NOT WHITENED AZIMUTHAL AVERAGE AND ITS PROJECTED MASKED VERSION ????
         // ESPECIALLY IT SEEMS THAT WHITENING MAKE CHANGES TO HOW THE AZIMUTHAL AVERAGE LOOK IN IMAGES
         // RUN THIS ON SINGLE THREAD IS BETTER
-//Image azimuthal_average_slice;
-#pragma omp parallel for schedule(dynamic, 1) num_threads(std::min(bins_count, max_threads)) default(none) shared(SPOT_RASTR, RASTR, prepare_projections_progress, current_image, bins_count, sum_whiten_images, model_volume, my_masked_volume, my_mask, input_3d, masked_3d, my_output_sum_image_filename,            \
-                                                                                                                  pixel_size, padding_factor, x_mask_center, y_mask_center, z_mask_center, sphere_mask_radius, filter_radius, use_outside_value, x_dim, y_dim, sum_images_after_aln, min_tube_diameter, bin_range,      \
+//Image azimuthal_average_slice; sum_whiten_images,
+#pragma omp parallel for schedule(dynamic, 1) num_threads(std::min(bins_count, max_threads)) default(none) shared(SPOT_RASTR, RASTR, prepare_projections_progress, current_image, bins_count, model_volume, my_masked_volume, my_mask, input_3d, masked_3d, my_output_sum_image_filename,                               \
+                                                                                                                  pixel_size, padding_factor, x_mask_center, y_mask_center, z_mask_center, sphere_mask_radius, filter_radius, use_outside_value, x_dim, y_dim, sum_images_to_process, min_tube_diameter, bin_range,     \
                                                                                                                   outside_value, outside_weight, cosine_edge, number_of_models, input_mask, model_file_name, output_average_per_bin_filename, mask_edge, outer_mask_radius,                                             \
                                                                                                                   output_azimuthal_average_volume_filename, model_dimension, masked_projection_volume_3d, projection_volume_3d) private(projection_volume_image, padded_projection_volume_image, output_model_filename, \
                                                                                                                                                                                                                                         masked_projection_volume_image, masked_padded_projection_volume_image, my_white_mask, mask_volume, mask_projection, my_parameters)
@@ -1874,54 +1942,54 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         for ( int bin_index = 0; bin_index < bins_count; bin_index++ ) {
 
             if ( SPOT_RASTR == true ) {
-                model_volume[bin_index].Allocate(padding_factor * sum_images_after_aln[bin_index].logical_x_dimension, padding_factor * sum_images_after_aln[bin_index].logical_y_dimension, padding_factor * sum_images_after_aln[bin_index].logical_x_dimension, true);
+                model_volume[bin_index].Allocate(padding_factor * sum_images_to_process[bin_index].logical_x_dimension, padding_factor * sum_images_to_process[bin_index].logical_y_dimension, padding_factor * sum_images_to_process[bin_index].logical_x_dimension, true);
                 model_volume[bin_index].SetToConstant(0.0);
 
-                float edge_value = sum_images_after_aln[bin_index].ReturnAverageOfRealValuesOnEdges( );
-                sum_images_after_aln[bin_index].Resize(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, 1, edge_value);
-                //sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("resized_sum_image_with_average.mrc", bin_index + 1);
+                float edge_value = sum_images_to_process[bin_index].ReturnAverageOfRealValuesOnEdges( );
+                sum_images_to_process[bin_index].Resize(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, 1, edge_value);
+                //sum_images_to_process[bin_index].QuickAndDirtyWriteSlice("resized_sum_image_with_average.mrc", bin_index + 1);
 
                 // fill the padded version with the sum image
                 // then do average rotationally before filling the volume
-                sum_image_direction(&sum_images_after_aln[bin_index], 2);
-                //sum_images_after_aln[bin_index].QuickAndDirtyWriteSlice("sum_image_after_adding_average.mrc", bin_index + 1);
+                sum_image_direction(&sum_images_to_process[bin_index], 2);
+                //sum_images_to_process[bin_index].QuickAndDirtyWriteSlice("sum_image_after_adding_average.mrc", bin_index + 1);
 
                 // mask the 2D image to avoid ring effect outside the azimuthal average volume
                 if ( outer_mask_radius != 0 ) {
-                    sum_images_after_aln[bin_index].CosineMask(outer_mask_radius, mask_edge, false, false, 0.0f);
+                    sum_images_to_process[bin_index].CosineMask(outer_mask_radius, mask_edge, false, false, 0.0f);
                 }
                 else if ( outer_mask_radius == 0 ) {
-                    sum_images_after_aln[bin_index].CosineMask(x_dim * 0.45, mask_edge, false, false, 0.0f);
+                    sum_images_to_process[bin_index].CosineMask(x_dim * 0.45, mask_edge, false, false, 0.0f);
                 }
 
-                sum_images_after_aln[bin_index].ApplyRampFilter( );
-                sum_images_after_aln[bin_index].AverageRotationally( );
-                sum_images_after_aln[bin_index].InvertRealValues( );
+                sum_images_to_process[bin_index].ApplyRampFilter( );
+                sum_images_to_process[bin_index].AverageRotationally( );
+                sum_images_to_process[bin_index].InvertRealValues( );
 
                 // fill in the model volume with the azimuthal average slice
                 long volume_counter = 0;
                 for ( int z = 0; z < model_volume[bin_index].logical_z_dimension; z++ ) {
                     for ( int y = 0; y < model_volume[bin_index].logical_y_dimension; y++ ) {
                         for ( int x = 0; x < model_volume[bin_index].logical_x_dimension; x++ ) {
-                            long pixel_coord_xy                                 = sum_images_after_aln[bin_index].ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
-                            model_volume[bin_index].real_values[volume_counter] = sum_images_after_aln[bin_index].real_values[pixel_coord_xy];
+                            long pixel_coord_xy                                 = sum_images_to_process[bin_index].ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
+                            model_volume[bin_index].real_values[volume_counter] = sum_images_to_process[bin_index].real_values[pixel_coord_xy];
                             volume_counter++;
                         }
-                        volume_counter += sum_images_after_aln[bin_index].padding_jump_value;
+                        volume_counter += sum_images_to_process[bin_index].padding_jump_value;
                     }
                 }
-                //resize the sum_images_after_aln back to be unpadded
-                sum_images_after_aln[bin_index].Resize(x_dim, y_dim, 1, edge_value);
+                //resize the sum_images_to_process back to be unpadded
+                sum_images_to_process[bin_index].Resize(x_dim, y_dim, 1, edge_value);
 
                 // I need to move this to another location to ensure saving the azimuthal averages volume with correct contrast (I need to invert real values)
-                // This can't happen here it needs to be later when sum_images_after_aln will not be used anymore
+                // This can't happen here it needs to be later when sum_images_to_process will not be used anymore
                 // save the azimuthal average model to an MRC file
                 // float bin_span        = ((bin_index * min_tube_diameter) + bin_range);
                 // float min_bin_span    = ((bin_index + 1) * min_tube_diameter);
                 model_file_name       = output_azimuthal_average_volume_filename + "_bin" + std::to_string(bin_index + 1) + "_" + floatToString(((min_tube_diameter + (bin_index * bin_range)) * pixel_size), 2) + "A_" + floatToString((min_tube_diameter + (bin_range * (bin_index + 1))) * pixel_size, 2) + "A.mrc";
                 output_model_filename = new MRCFile(model_file_name, true, true);
                 for ( long model_counter = 0; model_counter < model_dimension; model_counter++ ) {
-                    sum_images_after_aln[bin_index].WriteSlice(output_model_filename, model_counter + 1);
+                    sum_images_to_process[bin_index].WriteSlice(output_model_filename, model_counter + 1);
                 }
                 // output_model_filename->my_header.SetDimensionsVolume(model_dimension, model_dimension, model_dimension);
                 // output_model_filename->my_header.SetPixelSize(pixel_size);
@@ -1964,53 +2032,53 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                 padded_projection_volume_image.Deallocate( );
             }
             if ( RASTR == true ) {
-                model_volume[bin_index].Allocate(padding_factor * sum_whiten_images[bin_index].logical_x_dimension, padding_factor * sum_whiten_images[bin_index].logical_y_dimension, padding_factor * sum_whiten_images[bin_index].logical_x_dimension, true);
+                model_volume[bin_index].Allocate(padding_factor * sum_images_to_process[bin_index].logical_x_dimension, padding_factor * sum_images_to_process[bin_index].logical_y_dimension, padding_factor * sum_images_to_process[bin_index].logical_x_dimension, true);
                 model_volume[bin_index].SetToConstant(0.0);
 
-                float edge_value = sum_whiten_images[bin_index].ReturnAverageOfRealValuesOnEdges( );
-                sum_whiten_images[bin_index].Resize(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, 1, edge_value);
-                //sum_whiten_images[bin_index].QuickAndDirtyWriteSlice("resized_sum_image_with_average.mrc", bin_index + 1);
+                float edge_value = sum_images_to_process[bin_index].ReturnAverageOfRealValuesOnEdges( );
+                sum_images_to_process[bin_index].Resize(model_volume[bin_index].logical_x_dimension, model_volume[bin_index].logical_y_dimension, 1, edge_value);
+                //sum_images_to_process[bin_index].QuickAndDirtyWriteSlice("resized_sum_image_with_average.mrc", bin_index + 1);
                 // fill the padded version with the sum image
                 // then do average rotationally before filling the volume
-                sum_image_direction(&sum_whiten_images[bin_index], 2);
-                //sum_whiten_images[bin_index].QuickAndDirtyWriteSlice("sum_image_after_adding_average.mrc", bin_index + 1);
+                sum_image_direction(&sum_images_to_process[bin_index], 2);
+                //sum_images_to_process[bin_index].QuickAndDirtyWriteSlice("sum_image_after_adding_average.mrc", bin_index + 1);
 
                 // mask the 2D image to avoid ring effect outside the azimuthal average volume
                 float mask_edge = x_dim * 0.05f; // 5% of the pixels will constitute the soft edge
 
                 if ( outer_mask_radius != 0 ) {
-                    sum_whiten_images[bin_index].CosineMask(outer_mask_radius, mask_edge, false, false, 0.0f);
+                    sum_images_to_process[bin_index].CosineMask(outer_mask_radius, mask_edge, false, false, 0.0f);
                 }
                 else if ( outer_mask_radius == 0 ) {
-                    sum_whiten_images[bin_index].CosineMask(x_dim * 0.45, mask_edge, false, false, 0.0f);
+                    sum_images_to_process[bin_index].CosineMask(x_dim * 0.45, mask_edge, false, false, 0.0f);
                 }
 
-                sum_whiten_images[bin_index].ApplyRampFilter( );
-                sum_whiten_images[bin_index].AverageRotationally( );
+                sum_images_to_process[bin_index].ApplyRampFilter( );
+                sum_images_to_process[bin_index].AverageRotationally( );
 
                 // fill in the model volume with the azimuthal average slice
                 long volume_counter = 0;
                 for ( int z = 0; z < model_volume[bin_index].logical_z_dimension; z++ ) {
                     for ( int y = 0; y < model_volume[bin_index].logical_y_dimension; y++ ) {
                         for ( int x = 0; x < model_volume[bin_index].logical_x_dimension; x++ ) {
-                            long pixel_coord_xy                                 = sum_whiten_images[bin_index].ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
-                            model_volume[bin_index].real_values[volume_counter] = sum_whiten_images[bin_index].real_values[pixel_coord_xy];
+                            long pixel_coord_xy                                 = sum_images_to_process[bin_index].ReturnReal1DAddressFromPhysicalCoord(x, y, 0);
+                            model_volume[bin_index].real_values[volume_counter] = sum_images_to_process[bin_index].real_values[pixel_coord_xy];
                             volume_counter++;
                         }
-                        volume_counter += sum_whiten_images[bin_index].padding_jump_value;
+                        volume_counter += sum_images_to_process[bin_index].padding_jump_value;
                     }
                 }
 
-                //Invert contrast and resize the sum_whiten_images back to be unpadded
-                sum_whiten_images[bin_index].InvertRealValues( );
-                sum_whiten_images[bin_index].Resize(x_dim, y_dim, 1, edge_value);
+                //Invert contrast and resize the sum_images_to_process back to be unpadded
+                sum_images_to_process[bin_index].InvertRealValues( );
+                sum_images_to_process[bin_index].Resize(x_dim, y_dim, 1, edge_value);
                 // save the azimuthal average model to an MRC file
                 // float bin_span        = ((bin_index * min_tube_diameter) + bin_range);
                 // float min_bin_span    = ((bin_index + 1) * min_tube_diameter);
                 model_file_name       = output_azimuthal_average_volume_filename + "_bin" + std::to_string(bin_index + 1) + "_" + floatToString(((min_tube_diameter + (bin_index * bin_range)) * pixel_size), 2) + "A_" + floatToString((min_tube_diameter + (bin_range * (bin_index + 1))) * pixel_size, 2) + "A.mrc";
                 output_model_filename = new MRCFile(model_file_name, true, true);
                 for ( long model_counter = 0; model_counter < model_dimension; model_counter++ ) {
-                    sum_whiten_images[bin_index].WriteSlice(output_model_filename, model_counter + 1);
+                    sum_images_to_process[bin_index].WriteSlice(output_model_filename, model_counter + 1);
                 }
                 // output_model_filename->my_header.SetDimensionsVolume(model_dimension, model_dimension, model_dimension);
                 // output_model_filename->my_header.SetPixelSize(pixel_size);
@@ -2212,8 +2280,8 @@ bool AzimuthalAverageNew::DoCalculation( ) {
 
         my_mask.Deallocate( );
         sum_images->Deallocate( );
-        sum_images_after_aln->Deallocate( );
-        sum_whiten_images->Deallocate( );
+        sum_images_to_process->Deallocate( );
+        //sum_whiten_images->Deallocate( );
         my_masked_volume->Deallocate( );
         masked_3d->Deallocate( );
         input_3d->Deallocate( );
@@ -2285,19 +2353,6 @@ bool AzimuthalAverageNew::DoCalculation( ) {
             if ( input_ctf_values_from_star_file ) {
                 current_ctf.Init(ctf_parameters_stack[subtraction_image_counter].acceleration_voltage, ctf_parameters_stack[subtraction_image_counter].spherical_aberration, ctf_parameters_stack[subtraction_image_counter].amplitude_contrast, ctf_parameters_stack[subtraction_image_counter].defocus_1, ctf_parameters_stack[subtraction_image_counter].defocus_2, ctf_parameters_stack[subtraction_image_counter].astigmatism_angle, ctf_parameters_stack[subtraction_image_counter].lowest_frequency_for_fitting, ctf_parameters_stack[subtraction_image_counter].highest_frequency_for_fitting, ctf_parameters_stack[subtraction_image_counter].astigmatism_tolerance, ctf_parameters_stack[subtraction_image_counter].pixel_size, ctf_parameters_stack[subtraction_image_counter].additional_phase_shift);
             }
-
-            // // whiten and normalize the subtracted image before subtraction
-            // subtracted_image.ForwardFFT( );
-            // subtracted_image.ApplyCurveFilterUninterpolated(&noise_power_spectrum);
-            // subtracted_image.BackwardFFT( );
-
-            // // Normalize background variance and average
-            // float image_variance = subtracted_image.ReturnVarianceOfRealValues(subtracted_image.physical_address_of_box_center_x - mask_falloff / pixel_size, 0.0, 0.0, 0.0, true);
-            // float image_average  = subtracted_image.ReturnAverageOfRealValues(subtracted_image.physical_address_of_box_center_x - mask_falloff / pixel_size, true);
-            // if ( image_variance == 0.0f )
-            //     subtracted_image.SetToConstant(0.0f);
-            // else
-            //     subtracted_image.AddMultiplyConstant(-image_average, 1.0 / sqrtf(image_variance));
 
             subtracted_image.ForwardFFT( );
             subtracted_image.ZeroCentralPixel( );
@@ -2544,7 +2599,7 @@ bool AzimuthalAverageNew::DoCalculation( ) {
         //mask_RASTR_projection, mask_RASTR_projection_centered,
         //, random_phi_angles
         for ( long model_counter = 0; model_counter < number_of_models; model_counter++ ) {
-#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, best_psi_value, best_x_shift_value, number_of_models, input_3d, mask_upweighted, image_stack, model_counter, noise_power_spectrum, mask_falloff, masked_upweighted_output, mask_RASTR_projection, mask_RASTR_projection_centered,                                                                                                                                                                                                      \
+#pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads) default(none) shared(number_of_input_images, my_input_file, best_psi_value, best_x_shift_value, number_of_models, input_3d, mask_upweighted, image_stack, model_counter, noise_power_spectrum, mask_falloff, masked_upweighted_output, mask_RASTR_projection, mask_RASTR_projection_centered, whiten,                                                                                                                                                                                              \
                                                                                             ctf_parameters_stack, max_threads, diameter_bins, bins_count, current_image, mask_subtract_progress, align_upweighted, RASTR_projections_output, use_memory, adjusted_x_shifts, adjusted_y_shifts, input_ctf_values_from_star_file, current_ctf, pixel_size, padding_factor, masked_3d, x_mask_center, y_mask_center, x_dim, y_dim, z_mask_center, RASTR_adjusted_x_shifts, RASTR_adjusted_y_shifts, mask_projection, input_mask, filter_radius, outside_weight, cosine_edge, \
                                                                                             center_upweighted, sphere_mask_radius, RASTR_output_filename, my_output_RASTR_filename, projection_volume_3d, masked_projection_volume_3d) private(phi, projection_3d, projection_image, padded_projection_image, my_parameters_for_subtraction, mask_projection_image, padded_mask_projection_image, mask_parameters, subtracted_RASTR_image, centered_upweighted_image, unmasked_projection_image, unmasked_padded_projection_image, unmasked_projection_3d)
 
@@ -2573,25 +2628,37 @@ bool AzimuthalAverageNew::DoCalculation( ) {
                     subtracted_RASTR_image.ReadSlice(&my_input_file, subtraction_image_counter + 1);
                 }
 
-                // whiten and normalize the subtracted image before subtraction
-                subtracted_RASTR_image.ForwardFFT( );
-                subtracted_RASTR_image.ApplyCurveFilterUninterpolated(&noise_power_spectrum);
-                subtracted_RASTR_image.BackwardFFT( );
+                if ( whiten ) {
+                    // whiten and normalize the subtracted image before subtraction
+                    subtracted_RASTR_image.ForwardFFT( );
+                    subtracted_RASTR_image.ApplyCurveFilterUninterpolated(&noise_power_spectrum);
+                    subtracted_RASTR_image.BackwardFFT( );
 
-                // Normalize background variance and average
-                float image_variance = subtracted_RASTR_image.ReturnVarianceOfRealValues(subtracted_RASTR_image.physical_address_of_box_center_x - mask_falloff / pixel_size, 0.0, 0.0, 0.0, true);
-                float image_average  = subtracted_RASTR_image.ReturnAverageOfRealValues(subtracted_RASTR_image.physical_address_of_box_center_x - mask_falloff / pixel_size, true);
-                if ( image_variance == 0.0f )
-                    subtracted_RASTR_image.SetToConstant(0.0f);
-                else
-                    subtracted_RASTR_image.AddMultiplyConstant(-image_average, 1.0 / sqrtf(image_variance));
+                    // Normalize background variance and average
+                    float image_variance = subtracted_RASTR_image.ReturnVarianceOfRealValues(subtracted_RASTR_image.physical_address_of_box_center_x - mask_falloff / pixel_size, 0.0, 0.0, 0.0, true);
+                    float image_average  = subtracted_RASTR_image.ReturnAverageOfRealValues(subtracted_RASTR_image.physical_address_of_box_center_x - mask_falloff / pixel_size, true);
+                    if ( image_variance == 0.0f )
+                        subtracted_RASTR_image.SetToConstant(0.0f);
+                    else
+                        subtracted_RASTR_image.AddMultiplyConstant(-image_average, 1.0 / sqrtf(image_variance));
 
-                subtracted_RASTR_image.ForwardFFT( );
-                subtracted_RASTR_image.ZeroCentralPixel( );
-                subtracted_RASTR_image.BackwardFFT( );
+                    subtracted_RASTR_image.ForwardFFT( );
+                    subtracted_RASTR_image.ZeroCentralPixel( );
+                    subtracted_RASTR_image.BackwardFFT( );
 
-                if ( input_ctf_values_from_star_file ) {
-                    current_ctf.Init(ctf_parameters_stack[subtraction_image_counter].acceleration_voltage, ctf_parameters_stack[subtraction_image_counter].spherical_aberration, ctf_parameters_stack[subtraction_image_counter].amplitude_contrast, ctf_parameters_stack[subtraction_image_counter].defocus_1, ctf_parameters_stack[subtraction_image_counter].defocus_2, ctf_parameters_stack[subtraction_image_counter].astigmatism_angle, ctf_parameters_stack[subtraction_image_counter].lowest_frequency_for_fitting, ctf_parameters_stack[subtraction_image_counter].highest_frequency_for_fitting, ctf_parameters_stack[subtraction_image_counter].astigmatism_tolerance, ctf_parameters_stack[subtraction_image_counter].pixel_size, ctf_parameters_stack[subtraction_image_counter].additional_phase_shift);
+                    if ( input_ctf_values_from_star_file ) {
+                        current_ctf.Init(ctf_parameters_stack[subtraction_image_counter].acceleration_voltage, ctf_parameters_stack[subtraction_image_counter].spherical_aberration, ctf_parameters_stack[subtraction_image_counter].amplitude_contrast, ctf_parameters_stack[subtraction_image_counter].defocus_1, ctf_parameters_stack[subtraction_image_counter].defocus_2, ctf_parameters_stack[subtraction_image_counter].astigmatism_angle, ctf_parameters_stack[subtraction_image_counter].lowest_frequency_for_fitting, ctf_parameters_stack[subtraction_image_counter].highest_frequency_for_fitting, ctf_parameters_stack[subtraction_image_counter].astigmatism_tolerance, ctf_parameters_stack[subtraction_image_counter].pixel_size, ctf_parameters_stack[subtraction_image_counter].additional_phase_shift);
+                    }
+                }
+                else {
+                    if ( input_ctf_values_from_star_file ) {
+                        current_ctf.Init(ctf_parameters_stack[subtraction_image_counter].acceleration_voltage, ctf_parameters_stack[subtraction_image_counter].spherical_aberration, ctf_parameters_stack[subtraction_image_counter].amplitude_contrast, ctf_parameters_stack[subtraction_image_counter].defocus_1, ctf_parameters_stack[subtraction_image_counter].defocus_2, ctf_parameters_stack[subtraction_image_counter].astigmatism_angle, ctf_parameters_stack[subtraction_image_counter].lowest_frequency_for_fitting, ctf_parameters_stack[subtraction_image_counter].highest_frequency_for_fitting, ctf_parameters_stack[subtraction_image_counter].astigmatism_tolerance, ctf_parameters_stack[subtraction_image_counter].pixel_size, ctf_parameters_stack[subtraction_image_counter].additional_phase_shift);
+                    }
+
+                    subtracted_RASTR_image.ForwardFFT( );
+                    subtracted_RASTR_image.ZeroCentralPixel( );
+                    subtracted_RASTR_image.BackwardFFT( );
+                    subtracted_RASTR_image.Normalize( );
                 }
 
                 phi = model_counter * 360.0 / number_of_models;
